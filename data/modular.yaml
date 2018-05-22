@@ -1,0 +1,107 @@
+---
+document: modulemd
+version: 2
+data:
+  name: C
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - C-0:1-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: D
+  stream: stable
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - D-0:1-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: D
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - D-0:2-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: E
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - E-0:1-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: X
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  dependencies:
+    - requires:
+        D: [stable, master]
+        E: []
+  artifacts:
+    rpms:
+      - X-0:1-1+a.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: X
+  stream: master
+  version: 2018
+  context: bbadbeef
+  arch: noarch
+  dependencies:
+    - requires:
+        D: [stable, master]
+        E: []
+  artifacts:
+    rpms:
+      - X-0:1-1+b.noarch
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+  module: C
+  stream: master
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+  module: D
+  stream: stable
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+  module: X
+  stream: master
+...
