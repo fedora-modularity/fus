@@ -569,17 +569,6 @@ main (int   argc,
     }
   pool_createwhatprovides (pool);
 
-  g_auto(Queue) jobs;
-  queue_init (&jobs);
-  queue_push2 (&jobs, SOLVER_SOLVABLE_PROVIDES | SOLVER_INSTALL, pool_str2id (pool, "module(X)", 1));
-  g_autoptr(GArray) transactions = gather_alternatives (pool, &jobs);
-
-  if (!transactions)
-    {
-      ret = EXIT_FAILURE;
-      goto exit;
-    }
-
   g_auto(Map) considered;
   pool->considered = &considered;
   map_init (pool->considered, pool->nsolvables);
@@ -596,57 +585,116 @@ main (int   argc,
   queue_init (&pile);
 
   {
-    g_auto(Queue) job;
-    queue_init (&job);
-    for (unsigned int i = 0; i < transactions->len; i++)
-      {
-        Queue t = g_array_index (transactions, Queue, i);
-        queue_empty (&job);
-
-        /* install our combination */
-        for (int j = 0; j < t.count; j++)
-          queue_push2 (&job, SOLVER_SOLVABLE | SOLVER_INSTALL, t.elements[j]);
-
-        map_setall (pool->considered);
-        /* Disable all non-default unrelated modules */
-        Id *pp = ndef_modules;
-        for (; *pp; pp++)
-          if (!queue_contains (&t, *pp))
-            map_clr (pool->considered, *pp);
-
-        /* Since we are going to install RPMs by one,
-         * allocate extra element which we will set. */
-        if (t.count)
-          queue_push2 (&job, SOLVER_SOLVABLE | SOLVER_INSTALL, 0);
-
-        for (int j = 0; j < t.count; j++)
-          {
-            Id p = t.elements[j];
-            Solvable *s = pool_id2solvable (pool, p);
-
-            g_auto(Queue) q;
-            queue_init (&q);
-            Id dep = pool_rel2id (pool, s->name, s->arch, REL_ARCH, 1);
-            pool_whatcontainsdep (pool, SOLVABLE_REQUIRES, dep, &q, 0);
-
-            for (int k = 0; k < q.count; k++)
-              job.elements[job.count - 1] = q.elements[k];
-
-            g_autoptr(Solver) solver = solve (pool, &job);
-            if (solver)
-              {
-                g_autoptr(Transaction) trans = solver_create_transaction (solver);
-                g_auto(Queue) installedq;
-                queue_init (&installedq);
-                transaction_installedresult (trans, &installedq);
-                for (int k = 0; k < installedq.count; k++)
-                  queue_pushunique (&pile, installedq.elements[k]);
-              }
-            else
-              ret = EXIT_FAILURE;
-          }
-      }
+    Id p, pp;
+    FOR_PROVIDES (p, pp, pool_str2id (pool, "module(X)", 1))
+      queue_push (&pile, p);
   }
+
+  g_auto(Map) tested;
+  map_init (&tested, pool->nsolvables);
+  g_auto(Queue) job;
+  queue_init (&job);
+  gboolean all_tested = FALSE;
+  do
+    {
+      for (int i = 0; i < pile.count; i++)
+        {
+          Id p = pile.elements[i];
+          if (map_tst (&tested, p))
+            continue;
+
+          Solvable *s = pool_id2solvable (pool, p);
+          /* We are checking RPMs at the different time,
+           * only modules should be checked for combinations */
+          if (!g_str_has_prefix (pool_id2str (pool, s->name), "module:"))
+            continue;
+
+          map_setall (pool->considered);
+
+          queue_empty (&job);
+          queue_push2 (&job, SOLVER_SOLVABLE | SOLVER_INSTALL, p);
+          g_debug ("Searching combinations for %s", pool_solvid2str (pool, p));
+          g_autoptr(GArray) transactions = gather_alternatives (pool, &job);
+
+          if (!transactions)
+            {
+              ret = EXIT_FAILURE;
+              goto exit;
+            }
+
+          for (unsigned int i = 0; i < transactions->len; i++)
+            {
+              Queue t = g_array_index (transactions, Queue, i);
+
+              /* install our combination */
+              queue_empty (&job);
+              g_debug ("  Transaction %i / %i:", i + 1, transactions->len);
+              for (int j = 0; j < t.count; j++)
+                {
+                  Id p = t.elements[j];
+                  queue_push2 (&job, SOLVER_SOLVABLE | SOLVER_INSTALL, p);
+                  g_debug ("    - %s", pool_solvid2str (pool, p));
+                }
+
+              map_setall (pool->considered);
+              /* Disable all non-default unrelated modules */
+              Id *pp = ndef_modules;
+              for (; *pp; pp++)
+                if (!queue_contains (&t, *pp))
+                  map_clr (pool->considered, *pp);
+
+              Queue pjobs = pool->pooljobs;
+              pool->pooljobs = job;
+              for (int j = 0; j < t.count; j++)
+                {
+                  Id p = t.elements[j];
+                  Solvable *s = pool_id2solvable (pool, p);
+
+                  g_auto(Queue) q;
+                  queue_init (&q);
+                  Id dep = pool_rel2id (pool, s->name, s->arch, REL_ARCH, 1);
+                  pool_whatcontainsdep (pool, SOLVABLE_REQUIRES, dep, &q, 0);
+
+                  g_auto(Queue) j;
+                  queue_init (&j);
+                  for (int k = 0; k < q.count; k++)
+                    {
+                      Id p = q.elements[k];
+                      queue_empty (&j);
+                      queue_push2 (&j, SOLVER_SOLVABLE | SOLVER_INSTALL, p);
+                      g_debug ("    Installing %s:", pool_solvid2str (pool, p));
+
+                      g_autoptr(Solver) solver = solve (pool, &j);
+                      if (solver)
+                        {
+                          g_autoptr(Transaction) trans = solver_create_transaction (solver);
+                          g_auto(Queue) installedq;
+                          queue_init (&installedq);
+                          transaction_installedresult (trans, &installedq);
+                          for (int x = 0; x < installedq.count; x++)
+                            {
+                              Id p = installedq.elements[x];
+                              queue_pushunique (&pile, installedq.elements[x]);
+                              g_debug ("      - %s", pool_solvid2str (pool, p));
+                            }
+                        }
+                      else
+                        ret = EXIT_FAILURE;
+                    }
+                }
+              pool->pooljobs = pjobs;
+            }
+          map_set (&tested, p);
+        }
+
+      for (int i = 0; i < pile.count; i++)
+        {
+          if (!map_tst (&tested, pile.elements[i]))
+            break;
+          all_tested = TRUE;
+        }
+    }
+  while (!all_tested);
 
   for (int i = 0; i < pile.count; i++)
     {
