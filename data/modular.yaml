@@ -10,6 +10,7 @@ data:
   artifacts:
     rpms:
       - C-0:1-1.noarch
+      - CX-0:1-1.noarch
 ...
 ---
 document: modulemd

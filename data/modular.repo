@@ -5,6 +5,9 @@
 
 # Belongs to module:C:master:2018:deadbeef:noarch (default)
 =Pkg: C 1 1 noarch
+# Nothing pulls this in, but we want to get it in
+# because we pulled module:C implicitly.
+=Pkg: CX 1 1 noarch
 
 # Belongs to module:D:stable:2018:deadbeef:noarch (default)
 =Pkg: D 1 1 noarch
@@ -14,7 +17,7 @@
 
 # Belongs to module:E:master:2018:deadbeef:noarch
 =Pkg: E 1 1 noarch
-# Nothing pulled in this package,
+# Nothing pulls this in,
 # but we still need to get it in with all deps
 =Req: Z
 
