@@ -1,3 +1,4 @@
+#include <locale.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <glib.h>
@@ -502,6 +503,8 @@ int
 main (int   argc,
       char *argv[])
 {
+  setlocale (LC_ALL, "");
+
   int ret = EXIT_SUCCESS;
   g_autoptr(Pool) pool = pool_create ();
 
