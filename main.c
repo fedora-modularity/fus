@@ -517,20 +517,26 @@ main (int   argc,
   FILE *fp;
 
   Repo *lookaside = repo_create (pool, "lookaside");
-  fp = fopen (pool_tmpjoin (pool, TEST_DIR, "lookaside.repo", NULL), "r");
-  testcase_add_testtags (lookaside, fp, 0);
-  fclose (fp);
+  {
+    fp = fopen (pool_tmpjoin (pool, argv[1], "/lookaside.repo", NULL), "r");
+    testcase_add_testtags (lookaside, fp, 0);
+    fclose (fp);
+  }
 
   Repo *modular = repo_create (pool, "modular");
-  fp = fopen (pool_tmpjoin (pool, TEST_DIR, "modular.repo", NULL), "r");
-  testcase_add_testtags (modular, fp, 0);
-  fclose (fp);
-
+  {
+    fp = fopen (pool_tmpjoin (pool, argv[1], "/modular.repo", NULL), "r");
+    testcase_add_testtags (modular, fp, 0);
+    fclose (fp);
+  }
   pool_createwhatprovides (pool);
 
-  fp = fopen (pool_tmpjoin (pool, TEST_DIR, "modular.yaml", NULL), "r");
-  g_autoptr(GPtrArray) objects = modulemd_objects_from_stream (fp, NULL);
-  fclose (fp);
+  g_autoptr(GPtrArray) objects = NULL;
+  {
+    fp = fopen (pool_tmpjoin (pool, argv[1], "/modular.yaml", NULL), "r");
+    objects = modulemd_objects_from_stream (fp, NULL);
+    fclose (fp);
+  }
 
   for (unsigned int i = 0; i < objects->len; i++)
     {

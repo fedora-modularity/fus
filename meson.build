@@ -7,4 +7,4 @@ dep_modulemd = dependency('modulemd', version : '>= 1.4')
 
 add_project_arguments('-DG_LOG_DOMAIN="fus"', language : 'c')
 exe_main = executable('main', 'main.c', dependencies : [dep_glib, dep_libsolv, dep_libsolvext, dep_modulemd])
-test('main', exe_main)
+test('main', exe_main, args : ['@0@/data'.format(meson.current_source_dir())])
