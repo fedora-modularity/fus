@@ -141,7 +141,7 @@ add_module_solvables (Repo           *repo,
       solvable_add_deparray (solvable, SOLVABLE_REQUIRES, requires, 0);
 
       GStrv rpm_artifacts = modulemd_simpleset_dup (modulemd_module_peek_rpm_artifacts (module));
-      Queue sel;
+      g_auto(Queue) sel;
       queue_init (&sel);
       for (; *rpm_artifacts; rpm_artifacts++)
         {
