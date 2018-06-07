@@ -16,6 +16,19 @@ data:
 document: modulemd
 version: 2
 data:
+  name: C
+  stream: shiny
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - C-0:2-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
   name: D
   stream: stable
   version: 2018
