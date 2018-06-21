@@ -419,13 +419,11 @@ solve (Pool *pool, Queue *jobs)
             }
         }
 
-      testcase_write (solver, "/home/brain/test", TESTCASE_RESULT_TRANSACTION | TESTCASE_RESULT_PROBLEMS, NULL, NULL);
       solver_free (solver);
       return NULL;
     }
 
   g_autofree char *result = testcase_solverresult (solver, TESTCASE_RESULT_JOBS | TESTCASE_RESULT_ALTERNATIVES);
-  //g_print ("%s\n", result);
 
   return solver;
 }
