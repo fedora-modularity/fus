@@ -582,7 +582,7 @@ main (int   argc,
         case 'r':
           strv = g_strsplit (optarg, ",", 3);
           Repo *r = create_repo (pool, strv[0], strv[2]);
-          if (g_strcmp0 (strv[1], "lookaside"))
+          if (g_strcmp0 (strv[1], "lookaside") == 0)
             g_hash_table_add (lookaside_repos, r);
           break;
         case 'd':
