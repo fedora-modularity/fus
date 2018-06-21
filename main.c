@@ -1,3 +1,4 @@
+#include <getopt.h>
 #include <locale.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -19,9 +20,6 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC(Transaction, transaction_free);
 G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(Queue, queue_free);
 G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(Map, map_free);
 
-#define TEST_DIR "/home/brain/tmp/m/data/"
-#define REPO_FEDORA TEST_DIR "fedora/"
-#define REPO_MODULAR TEST_DIR "modular/"
 #define TMPL_NPROV "module(%s)"
 #define TMPL_NSPROV "module(%s:%s)"
 
@@ -519,18 +517,61 @@ main (int   argc,
 {
   setlocale (LC_ALL, "");
 
+  static const struct option long_opts[] = {
+    { "repo",     required_argument, NULL, 'r' },
+    { "debug",    no_argument,       NULL, 'd' },
+    { "platform", required_argument, NULL, 'p' },
+    { NULL, 0, NULL, '\0' },
+  };
+
   int ret = EXIT_SUCCESS;
   g_autoptr(Pool) pool = pool_create ();
 
   pool_setarch (pool, "x86_64");
 
-  //pool_setdebuglevel (pool, 2);
+  Repo *system = repo_create (pool, "@system");
+  pool_set_installed (pool, system);
+
+  int c;
+  g_autoptr(GHashTable) lookaside_repos = g_hash_table_new (g_direct_hash, NULL);
+  while ((c = getopt_long (argc, argv, "r:dp:", long_opts, NULL)) != -1)
+    {
+      g_auto(GStrv) strv = NULL;
+      switch (c)
+        {
+        case 'r':
+          strv = g_strsplit (optarg, ",", 3);
+          Repo *r = create_repo (pool, strv[0], strv[2]);
+          if (g_strcmp0 (strv[1], "lookaside"))
+            g_hash_table_add (lookaside_repos, r);
+          break;
+        case 'd':
+          pool_setdebuglevel (pool, 2);
+          break;
+        case 'p':
+            {
+              g_autoptr(GPtrArray) mmd_objects = g_ptr_array_new ();
+
+              g_autoptr(ModulemdModule) module = modulemd_module_new ();
+              modulemd_module_set_name (module, "platform");
+              modulemd_module_set_stream (module, optarg);
+              modulemd_module_set_version (module, 0);
+              modulemd_module_set_context (module, "00000000");
+              modulemd_module_set_arch (module, "x86_64");
+              g_ptr_array_add (mmd_objects, module);
+
+              g_autoptr(ModulemdDefaults) defaults = modulemd_defaults_new ();
+              modulemd_defaults_set_module_name (defaults, "platform");
+              modulemd_defaults_set_default_stream (defaults, optarg);
+              g_ptr_array_add (mmd_objects, defaults);
+
+              _repo_add_modulemd_from_objects (system, mmd_objects, NULL, 0);
+              break;
+            }
+        }
+    }
 
 #if 0
-  create_repo (pool, "fedora", REPO_FEDORA);
-  create_repo (pool, "modular", REPO_MODULAR);
-#endif
-
   FILE *fp;
 
   Repo *lookaside = repo_create (pool, "lookaside");
@@ -590,6 +631,8 @@ main (int   argc,
                                  0);
         }
     }
+#endif
+
   pool_createwhatprovides (pool);
 
   g_auto(Map) considered;
@@ -719,14 +762,16 @@ main (int   argc,
     }
   while (!all_tested);
 
+  if (ret != EXIT_SUCCESS)
+    return ret;
+
   for (int i = 0; i < pile.count; i++)
     {
       Solvable *s = pool_id2solvable (pool, pile.elements[i]);
-      if (s->repo == lookaside)
+      if (g_hash_table_contains (lookaside_repos, s->repo))
         continue;
       g_print ("%s\n", pool_solvable2str (pool, s));
     }
 
-exit:
   return ret;
 }
