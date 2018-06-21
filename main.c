@@ -8,6 +8,7 @@
 #include <solv/selection.h>
 #include <solv/testcase.h>
 #include <solv/transaction.h>
+#include <solv/repo_comps.h>
 #include <solv/repo_repomdxml.h>
 #include <solv/repo_rpmmd.h>
 #include <solv/solv_xfopen.h>
@@ -305,18 +306,31 @@ create_repo (Pool       *pool,
   fclose (fp);
 
   fname = repomd_find (repo, "primary", &chksum, &chksumtype);
-  fp = solv_xfopen (pool_tmpjoin (pool, path, fname, NULL), 0);
-  repo_add_rpmmd (repo, fp, NULL, 0);
-  fclose (fp);
+  if (fname)
+    {
+      fp = solv_xfopen (pool_tmpjoin (pool, path, fname, NULL), 0);
+      repo_add_rpmmd (repo, fp, NULL, 0);
+      fclose (fp);
+    }
 
-  /*
+  fname = repomd_find (repo, "group_gz", &chksum, &chksumtype);
+  if (!fname)
+    fname = repomd_find (repo, "group", &chksum, &chksumtype);
+  if (fname)
+    {
+      fp = solv_xfopen (pool_tmpjoin (pool, path, fname, NULL), 0);
+      repo_add_comps (repo, fp, 0);
+      fclose (fp);
+    }
+
+#if 0
   fname = repomd_find (repo, "filelists", &chksum, &chksumtype);
   fp = solv_xfopen (pool_tmpjoin (pool, path, fname, NULL), 0);
   repo_add_rpmmd (repo, fp, NULL, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
   fclose (fp);
-  */
 
   pool_addfileprovides (pool);
+#endif
   pool_createwhatprovides (pool);
 
   fname = repomd_find (repo, "modules", &chksum, &chksumtype);
