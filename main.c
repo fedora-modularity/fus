@@ -231,6 +231,53 @@ add_module_solvables (Repo           *repo,
     }
 }
 
+static void
+_repo_add_modulemd_from_objects (Repo       *repo,
+                                 GPtrArray  *objects,
+                                 const char *language,
+                                 int         flags)
+{
+  Pool *pool = repo->pool;
+
+  /* TODO: implement usage of REPO_EXTEND_SOLVABLES, but modulemd doesn't store chksums */
+
+  for (unsigned int i = 0; i < objects->len; i++)
+    {
+      GObject *object = g_ptr_array_index (objects, i);
+      if (!MODULEMD_IS_MODULE (object))
+        continue;
+
+      ModulemdModule *module = (ModulemdModule *)object;
+      add_module_solvables (repo, module);
+    }
+  pool_createwhatprovides (pool);
+
+  for (unsigned int i = 0; i < objects->len; i++)
+    {
+      GObject *object = g_ptr_array_index (objects, i);
+      if (!MODULEMD_IS_DEFAULTS (object))
+        continue;
+
+      ModulemdDefaults *defaults = (ModulemdDefaults *)object;
+      const char *n = modulemd_defaults_peek_module_name (defaults);
+      const char *s = modulemd_defaults_peek_default_stream (defaults);
+      g_autofree char *mprov = g_strdup_printf ("module(%s:%s)", n, s);
+
+      Id dep = pool_str2id (pool, mprov, 0);
+      if (!dep)
+        continue;
+
+      Id *pp = pool_whatprovides_ptr (pool, dep);
+      for (; *pp; pp++)
+        {
+          Solvable *s = pool_id2solvable (pool, *pp);
+          solvable_add_deparray (s, SOLVABLE_PROVIDES,
+                                 pool_str2id (pool, "module-default()", 1),
+                                 0);
+        }
+    }
+}
+
 static int
 repo_add_modulemd (Repo       *repo,
                    FILE       *fp,
@@ -239,16 +286,7 @@ repo_add_modulemd (Repo       *repo,
 {
   g_autoptr(GPtrArray) objects = modulemd_objects_from_stream (fp, NULL);
 
-  /* TODO: implement usage of REPO_EXTEND_SOLVABLES, but modulemd doesn't store chksums */
-
-  for (unsigned int i = 0; i < objects->len; i++)
-    {
-      if (MODULEMD_IS_MODULE (g_ptr_array_index (objects, i)))
-        {
-          ModulemdModule *module = g_ptr_array_index (objects, i);
-          add_module_solvables (repo, module);
-        }
-    }
+  _repo_add_modulemd_from_objects (repo, objects, language, flags);
 
   return 0;
 }
@@ -381,11 +419,13 @@ solve (Pool *pool, Queue *jobs)
             }
         }
 
+      testcase_write (solver, "/home/brain/test", TESTCASE_RESULT_TRANSACTION | TESTCASE_RESULT_PROBLEMS, NULL, NULL);
       solver_free (solver);
       return NULL;
     }
 
   g_autofree char *result = testcase_solverresult (solver, TESTCASE_RESULT_JOBS | TESTCASE_RESULT_ALTERNATIVES);
+  //g_print ("%s\n", result);
 
   return solver;
 }
@@ -650,11 +690,18 @@ main (int   argc,
   g_auto(Queue) pile;
   queue_init (&pile);
 
-  {
-    Id p, pp;
-    FOR_PROVIDES (p, pp, pool_str2id (pool, "module(X)", 1))
-      queue_push (&pile, p);
-  }
+  int sel_flags = SELECTION_NAME | SELECTION_PROVIDES | SELECTION_GLOB;
+  g_auto(Queue) sel;
+  queue_init (&sel);
+  for (int i = optind; i < argc; i++)
+    {
+      selection_make (pool, &sel, argv[i], sel_flags);
+      g_auto(Queue) q;
+      queue_init (&q);
+      selection_solvables (pool, &sel, &q);
+      for (int j = 0; j < q.count; j++)
+        queue_push (&pile, q.elements[j]);
+    }
 
   g_auto(Map) tested;
   map_init (&tested, pool->nsolvables);
@@ -670,86 +717,107 @@ main (int   argc,
             continue;
 
           Solvable *s = pool_id2solvable (pool, p);
-          /* We are checking RPMs at the different time,
-           * only modules should be checked for combinations */
-          if (!g_str_has_prefix (pool_id2str (pool, s->name), "module:"))
-            continue;
 
           map_setall (pool->considered);
 
           queue_empty (&job);
           queue_push2 (&job, SOLVER_SOLVABLE | SOLVER_INSTALL, p);
-          g_debug ("Searching combinations for %s", pool_solvid2str (pool, p));
-          g_autoptr(GArray) transactions = gather_alternatives (pool, &job);
 
-          if (!transactions)
+          /* For non-modular solvables we are not interested
+           * in getting all combinations */
+          if (!g_str_has_prefix (pool_id2str (pool, s->name), "module:"))
             {
-              ret = EXIT_FAILURE;
-              goto exit;
-            }
+              g_debug ("Installing %s:", pool_solvid2str (pool, p));
 
-          for (unsigned int i = 0; i < transactions->len; i++)
-            {
-              Queue t = g_array_index (transactions, Queue, i);
-
-              /* install our combination */
-              queue_empty (&job);
-              g_debug ("  Transaction %i / %i:", i + 1, transactions->len);
-              for (int j = 0; j < t.count; j++)
+              g_autoptr(Solver) solver = solve (pool, &job);
+              if (solver)
                 {
-                  Id p = t.elements[j];
-                  queue_push2 (&job, SOLVER_SOLVABLE | SOLVER_INSTALL, p);
-                  g_debug ("    - %s", pool_solvid2str (pool, p));
-                }
-
-              map_setall (pool->considered);
-              /* Disable all non-default unrelated modules */
-              Id *pp = ndef_modules;
-              for (; *pp; pp++)
-                if (!queue_contains (&t, *pp))
-                  map_clr (pool->considered, *pp);
-
-              Queue pjobs = pool->pooljobs;
-              pool->pooljobs = job;
-              for (int j = 0; j < t.count; j++)
-                {
-                  Id p = t.elements[j];
-                  Solvable *s = pool_id2solvable (pool, p);
-
-                  g_auto(Queue) q;
-                  queue_init (&q);
-                  Id dep = pool_rel2id (pool, s->name, s->arch, REL_ARCH, 1);
-                  pool_whatcontainsdep (pool, SOLVABLE_REQUIRES, dep, &q, 0);
-
-                  g_auto(Queue) j;
-                  queue_init (&j);
-                  for (int k = 0; k < q.count; k++)
+                  g_autoptr(Transaction) trans = solver_create_transaction (solver);
+                  g_auto(Queue) installedq;
+                  queue_init (&installedq);
+                  transaction_installedresult (trans, &installedq);
+                  for (int x = 0; x < installedq.count; x++)
                     {
-                      Id p = q.elements[k];
-                      queue_empty (&j);
-                      queue_push2 (&j, SOLVER_SOLVABLE | SOLVER_INSTALL, p);
-                      g_debug ("    Installing %s:", pool_solvid2str (pool, p));
-
-                      g_autoptr(Solver) solver = solve (pool, &j);
-                      if (solver)
-                        {
-                          g_autoptr(Transaction) trans = solver_create_transaction (solver);
-                          g_auto(Queue) installedq;
-                          queue_init (&installedq);
-                          transaction_installedresult (trans, &installedq);
-                          for (int x = 0; x < installedq.count; x++)
-                            {
-                              Id p = installedq.elements[x];
-                              queue_pushunique (&pile, installedq.elements[x]);
-                              g_debug ("      - %s", pool_solvid2str (pool, p));
-                            }
-                        }
-                      else
-                        ret = EXIT_FAILURE;
+                      Id p = installedq.elements[x];
+                      queue_pushunique (&pile, installedq.elements[x]);
+                      g_debug ("  - %s", pool_solvid2str (pool, p));
                     }
-                }
-              pool->pooljobs = pjobs;
+                  }
+              else
+                ret = EXIT_FAILURE;
             }
+          else
+            {
+              g_debug ("Searching combinations for %s", pool_solvid2str (pool, p));
+              g_autoptr(GArray) transactions = gather_alternatives (pool, &job);
+
+              if (transactions->len == 0)
+                ret = EXIT_FAILURE;
+
+              for (unsigned int i = 0; i < transactions->len; i++)
+                {
+                  Queue t = g_array_index (transactions, Queue, i);
+
+                  /* install our combination */
+                  queue_empty (&job);
+                  g_debug ("  Transaction %i / %i:", i + 1, transactions->len);
+                  for (int j = 0; j < t.count; j++)
+                    {
+                      Id p = t.elements[j];
+                      queue_push2 (&job, SOLVER_SOLVABLE | SOLVER_INSTALL, p);
+                      g_debug ("    - %s", pool_solvid2str (pool, p));
+                    }
+
+                  map_setall (pool->considered);
+                  /* Disable all non-default unrelated modules */
+                  Id *pp = ndef_modules;
+                  for (; *pp; pp++)
+                    if (!queue_contains (&t, *pp))
+                      map_clr (pool->considered, *pp);
+
+                  Queue pjobs = pool->pooljobs;
+                  pool->pooljobs = job;
+                  for (int j = 0; j < t.count; j++)
+                    {
+                      Id p = t.elements[j];
+                      Solvable *s = pool_id2solvable (pool, p);
+
+                      g_auto(Queue) q;
+                      queue_init (&q);
+                      Id dep = pool_rel2id (pool, s->name, s->arch, REL_ARCH, 1);
+                      pool_whatcontainsdep (pool, SOLVABLE_REQUIRES, dep, &q, 0);
+
+                      g_auto(Queue) j;
+                      queue_init (&j);
+                      for (int k = 0; k < q.count; k++)
+                        {
+                          Id p = q.elements[k];
+                          queue_empty (&j);
+                          queue_push2 (&j, SOLVER_SOLVABLE | SOLVER_INSTALL, p);
+                          g_debug ("    Installing %s:", pool_solvid2str (pool, p));
+
+                          g_autoptr(Solver) solver = solve (pool, &j);
+                          if (solver)
+                            {
+                              g_autoptr(Transaction) trans = solver_create_transaction (solver);
+                              g_auto(Queue) installedq;
+                              queue_init (&installedq);
+                              transaction_installedresult (trans, &installedq);
+                              for (int x = 0; x < installedq.count; x++)
+                                {
+                                  Id p = installedq.elements[x];
+                                  queue_pushunique (&pile, installedq.elements[x]);
+                                  g_debug ("      - %s", pool_solvid2str (pool, p));
+                                }
+                            }
+                          else
+                            ret = EXIT_FAILURE;
+                        }
+                    }
+                  pool->pooljobs = pjobs;
+                }
+            }
+
           map_set (&tested, p);
         }
 
