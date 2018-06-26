@@ -14,7 +14,7 @@ $ ninja -C builddir
 ## Usage
 
 ```
-$ ./builddir/main --repo NAME,TYPE,PATH --debug ITEM
+$ ./builddir/main --arch ARCH --repo NAME,TYPE,PATH --debug ITEM
 ```
 
 There can be multiple repos. The name is just the name of the repository; type

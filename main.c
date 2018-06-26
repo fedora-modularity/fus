@@ -559,20 +559,19 @@ main (int   argc,
     { "repo",     required_argument, NULL, 'r' },
     { "debug",    no_argument,       NULL, 'd' },
     { "platform", required_argument, NULL, 'p' },
+    { "arch",     required_argument, NULL, 'a' },
     { NULL, 0, NULL, '\0' },
   };
 
   int ret = EXIT_SUCCESS;
   g_autoptr(Pool) pool = pool_create ();
 
-  pool_setarch (pool, "x86_64");
-
   Repo *system = repo_create (pool, "@system");
   pool_set_installed (pool, system);
 
   int c;
   g_autoptr(GHashTable) lookaside_repos = g_hash_table_new (g_direct_hash, NULL);
-  while ((c = getopt_long (argc, argv, "r:dp:", long_opts, NULL)) != -1)
+  while ((c = getopt_long (argc, argv, "r:dp:a:", long_opts, NULL)) != -1)
     {
       g_auto(GStrv) strv = NULL;
       switch (c)
@@ -606,6 +605,8 @@ main (int   argc,
               _repo_add_modulemd_from_objects (system, mmd_objects, NULL, 0);
               break;
             }
+        case 'a':
+            pool_setarch (pool, optarg);
         }
     }
 
