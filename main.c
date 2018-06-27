@@ -700,6 +700,7 @@ main (int   argc,
     }
 #endif
 
+  pool_addfileprovides (pool);
   pool_createwhatprovides (pool);
 
   g_auto(Map) considered;
