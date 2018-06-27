@@ -629,6 +629,7 @@ main (int   argc,
     }
 
   g_autoptr(GHashTable) lookaside_repos = g_hash_table_new (g_direct_hash, NULL);
+  g_hash_table_add (lookaside_repos, system);
   for (GStrv repo = repos; repo && *repo; repo++)
     {
       g_auto(GStrv) strv = g_strsplit (*repo, ",", 3);
