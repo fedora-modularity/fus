@@ -736,6 +736,13 @@ main (int   argc,
       for (int j = 0; j < q.count; j++)
         queue_push (&pile, q.elements[j]);
     }
+  if (!pile.count)
+    {
+      g_set_error_literal (&err,
+                           G_OPTION_ERROR, G_OPTION_ERROR_FAILED,
+                           "No solvables matched");
+      exiterr (err);
+    }
 
   g_auto(Map) tested;
   map_init (&tested, pool->nsolvables);
