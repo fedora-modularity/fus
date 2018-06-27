@@ -2,6 +2,7 @@
 #include <locale.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <sys/utsname.h>
 #include <glib.h>
 #include <modulemd.h>
 #include <solv/policy.h>
@@ -557,23 +558,56 @@ main (int   argc,
   setlocale (LC_ALL, "");
 
   static const struct option long_opts[] = {
+    { "arch",     required_argument, NULL, 'a' },
     { "repo",     required_argument, NULL, 'r' },
     { "debug",    no_argument,       NULL, 'd' },
     { "platform", required_argument, NULL, 'p' },
     { NULL, 0, NULL, '\0' },
   };
+  static const char *opts = "a:r:dp:";
 
   int ret = EXIT_SUCCESS;
   g_autoptr(Pool) pool = pool_create ();
-
-  pool_setarch (pool, "x86_64");
 
   Repo *system = repo_create (pool, "@system");
   pool_set_installed (pool, system);
 
   int c;
+
+  const char *arch = NULL;
+  while ((c = getopt_long (argc, argv, opts, long_opts, NULL)) != -1)
+    {
+      switch (c)
+        {
+        case 'a':
+          arch = optarg;
+          break;
+        case 'd':
+          pool_setdebuglevel (pool, 2);
+          break;
+        case 'r':
+        case 'p':
+          /* We will handle them in next getopt() */
+          break;
+        default:
+          return EXIT_FAILURE;
+        }
+    }
+
+  if (!arch)
+    {
+      struct utsname un;
+      uname (&un);
+      arch = un.machine;
+    }
+  g_debug ("Setting architecture to %s", arch);
+  pool_setarch (pool, arch);
+
+  /* Reset 'optind' to parse arguments again. */
+  optind = 0;
+
   g_autoptr(GHashTable) lookaside_repos = g_hash_table_new (g_direct_hash, NULL);
-  while ((c = getopt_long (argc, argv, "r:dp:", long_opts, NULL)) != -1)
+  while ((c = getopt_long (argc, argv, opts, long_opts, NULL)) != -1)
     {
       g_auto(GStrv) strv = NULL;
       switch (c)
@@ -584,9 +618,6 @@ main (int   argc,
           if (g_strcmp0 (strv[1], "lookaside") == 0)
             g_hash_table_add (lookaside_repos, r);
           break;
-        case 'd':
-          pool_setdebuglevel (pool, 2);
-          break;
         case 'p':
             {
               g_autoptr(GPtrArray) mmd_objects = g_ptr_array_new ();
@@ -596,7 +627,7 @@ main (int   argc,
               modulemd_module_set_stream (module, optarg);
               modulemd_module_set_version (module, 0);
               modulemd_module_set_context (module, "00000000");
-              modulemd_module_set_arch (module, "x86_64");
+              modulemd_module_set_arch (module, arch);
               g_ptr_array_add (mmd_objects, module);
 
               g_autoptr(ModulemdDefaults) defaults = modulemd_defaults_new ();
@@ -607,6 +638,12 @@ main (int   argc,
               _repo_add_modulemd_from_objects (system, mmd_objects, NULL, 0);
               break;
             }
+        case 'a':
+        case 'd':
+          /* We handled those in previous getopt() */
+          break;
+        default:
+          return EXIT_FAILURE;
         }
     }
 
