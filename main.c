@@ -885,7 +885,7 @@ main (int   argc,
       Solvable *s = pool_id2solvable (pool, pile.elements[i]);
       if (g_hash_table_contains (lookaside_repos, s->repo))
         continue;
-      g_print ("%s\n", pool_solvable2str (pool, s));
+      g_print ("%s@%s\n", pool_solvable2str (pool, s), s->repo->name);
     }
 
   if (err)
