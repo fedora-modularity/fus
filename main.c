@@ -339,14 +339,14 @@ create_repo (Pool       *pool,
 
   Repo *repo = repo_create (pool, name);
 
-  fp = solv_xfopen (pool_tmpjoin (pool, path, "repodata/repomd.xml", NULL), "r");
+  fp = solv_xfopen (pool_tmpjoin (pool, path, "/", "repodata/repomd.xml"), "r");
   repo_add_repomdxml (repo, fp, 0);
   fclose (fp);
 
   fname = repomd_find (repo, "primary", &chksum, &chksumtype);
   if (fname)
     {
-      fp = solv_xfopen (pool_tmpjoin (pool, path, fname, NULL), 0);
+      fp = solv_xfopen (pool_tmpjoin (pool, path, "/", fname), 0);
       repo_add_rpmmd (repo, fp, NULL, 0);
       fclose (fp);
     }
@@ -356,14 +356,14 @@ create_repo (Pool       *pool,
     fname = repomd_find (repo, "group", &chksum, &chksumtype);
   if (fname)
     {
-      fp = solv_xfopen (pool_tmpjoin (pool, path, fname, NULL), 0);
+      fp = solv_xfopen (pool_tmpjoin (pool, path, "/", fname), 0);
       repo_add_comps (repo, fp, 0);
       fclose (fp);
     }
 
 #if 0
   fname = repomd_find (repo, "filelists", &chksum, &chksumtype);
-  fp = solv_xfopen (pool_tmpjoin (pool, path, fname, NULL), 0);
+  fp = solv_xfopen (pool_tmpjoin (pool, path, "/", fname), 0);
   repo_add_rpmmd (repo, fp, NULL, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
   fclose (fp);
 
@@ -374,7 +374,7 @@ create_repo (Pool       *pool,
   fname = repomd_find (repo, "modules", &chksum, &chksumtype);
   if (fname)
     {
-      fp = solv_xfopen (pool_tmpjoin (pool, path, fname, NULL), 0);
+      fp = solv_xfopen (pool_tmpjoin (pool, path, "/", fname), 0);
       repo_add_modulemd (repo, fp, NULL, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
       fclose (fp);
     }
