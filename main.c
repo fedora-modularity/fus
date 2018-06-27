@@ -1,9 +1,9 @@
-#include <getopt.h>
 #include <locale.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <sys/utsname.h>
 #include <glib.h>
+#include <gio/gio.h>
 #include <modulemd.h>
 #include <solv/policy.h>
 #include <solv/pool.h>
@@ -551,48 +551,51 @@ queue_contains (Queue *q, Id id)
   return FALSE;
 }
 
+static inline void G_GNUC_NORETURN
+exiterr (GError *error)
+{
+  g_printerr ("Error: %s\n", error->message);
+  exit (EXIT_FAILURE);
+}
+
 int
 main (int   argc,
       char *argv[])
 {
   setlocale (LC_ALL, "");
+  g_autoptr(GError) err = NULL;
 
-  static const struct option long_opts[] = {
-    { "arch",     required_argument, NULL, 'a' },
-    { "repo",     required_argument, NULL, 'r' },
-    { "debug",    no_argument,       NULL, 'd' },
-    { "platform", required_argument, NULL, 'p' },
-    { NULL, 0, NULL, '\0' },
+  static char *arch = NULL;
+  static char *platform = NULL;
+  GStrv static solvables = NULL;
+  GStrv static repos = NULL;
+  static gboolean verbose = FALSE;
+  static const GOptionEntry opts[] = {
+    { "verbose", 'v', 0, G_OPTION_ARG_NONE, &verbose, "Show extra debugging information", NULL },
+    { "arch", 'a', 0, G_OPTION_ARG_STRING, &arch, "Architecture to work with", "ARCH" },
+    { "repo", 'r', 0, G_OPTION_ARG_STRING_ARRAY, &repos, "Information about repo (id,type,path)", "REPO" },
+    { "platform", 'p', 0, G_OPTION_ARG_STRING, &platform, "Emulate this stream of a platform", "STREAM" },
+    { G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &solvables, "Things to resolve", "SOLVABLE…" },
+    { NULL }
   };
-  static const char *opts = "a:r:dp:";
 
-  int ret = EXIT_SUCCESS;
+  g_autoptr(GOptionContext) opt_ctx = g_option_context_new ("- Funny solver");
+  g_option_context_add_main_entries (opt_ctx, opts, NULL);
+  if (!g_option_context_parse (opt_ctx, &argc, &argv, &err))
+    exiterr (err);
+
+  if (!solvables)
+    {
+      g_set_error_literal (&err,
+                           G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+                           "At least one solvable should be specified");
+      exiterr (err);
+    }
+
   g_autoptr(Pool) pool = pool_create ();
 
-  Repo *system = repo_create (pool, "@system");
-  pool_set_installed (pool, system);
-
-  int c;
-
-  const char *arch = NULL;
-  while ((c = getopt_long (argc, argv, opts, long_opts, NULL)) != -1)
-    {
-      switch (c)
-        {
-        case 'a':
-          arch = optarg;
-          break;
-        case 'd':
-          pool_setdebuglevel (pool, 2);
-          break;
-        case 'r':
-        case 'p':
-          /* We will handle them in next getopt() */
-          break;
-        default:
-          return EXIT_FAILURE;
-        }
-    }
+  if (verbose)
+    g_setenv ("G_MESSAGES_DEBUG", "fus", FALSE);
 
   if (!arch)
     {
@@ -603,48 +606,35 @@ main (int   argc,
   g_debug ("Setting architecture to %s", arch);
   pool_setarch (pool, arch);
 
-  /* Reset 'optind' to parse arguments again. */
-  optind = 0;
+  Repo *system = repo_create (pool, "@system");
+  pool_set_installed (pool, system);
+  if (platform)
+    {
+      g_autoptr(GPtrArray) mmd_objects = g_ptr_array_new ();
+
+      g_autoptr(ModulemdModule) module = modulemd_module_new ();
+      modulemd_module_set_name (module, "platform");
+      modulemd_module_set_stream (module, platform);
+      modulemd_module_set_version (module, 0);
+      modulemd_module_set_context (module, "00000000");
+      modulemd_module_set_arch (module, arch);
+      g_ptr_array_add (mmd_objects, module);
+
+      g_autoptr(ModulemdDefaults) defaults = modulemd_defaults_new ();
+      modulemd_defaults_set_module_name (defaults, "platform");
+      modulemd_defaults_set_default_stream (defaults, platform);
+      g_ptr_array_add (mmd_objects, defaults);
+
+      _repo_add_modulemd_from_objects (system, mmd_objects, NULL, 0);
+    }
 
   g_autoptr(GHashTable) lookaside_repos = g_hash_table_new (g_direct_hash, NULL);
-  while ((c = getopt_long (argc, argv, opts, long_opts, NULL)) != -1)
+  for (GStrv repo = repos; repo && *repo; repo++)
     {
-      g_auto(GStrv) strv = NULL;
-      switch (c)
-        {
-        case 'r':
-          strv = g_strsplit (optarg, ",", 3);
-          Repo *r = create_repo (pool, strv[0], strv[2]);
-          if (g_strcmp0 (strv[1], "lookaside") == 0)
-            g_hash_table_add (lookaside_repos, r);
-          break;
-        case 'p':
-            {
-              g_autoptr(GPtrArray) mmd_objects = g_ptr_array_new ();
-
-              g_autoptr(ModulemdModule) module = modulemd_module_new ();
-              modulemd_module_set_name (module, "platform");
-              modulemd_module_set_stream (module, optarg);
-              modulemd_module_set_version (module, 0);
-              modulemd_module_set_context (module, "00000000");
-              modulemd_module_set_arch (module, arch);
-              g_ptr_array_add (mmd_objects, module);
-
-              g_autoptr(ModulemdDefaults) defaults = modulemd_defaults_new ();
-              modulemd_defaults_set_module_name (defaults, "platform");
-              modulemd_defaults_set_default_stream (defaults, optarg);
-              g_ptr_array_add (mmd_objects, defaults);
-
-              _repo_add_modulemd_from_objects (system, mmd_objects, NULL, 0);
-              break;
-            }
-        case 'a':
-        case 'd':
-          /* We handled those in previous getopt() */
-          break;
-        default:
-          return EXIT_FAILURE;
-        }
+      g_auto(GStrv) strv = g_strsplit (*repo, ",", 3);
+      Repo *r = create_repo (pool, strv[0], strv[2]);
+      if (g_strcmp0 (strv[1], "lookaside") == 0)
+        g_hash_table_add (lookaside_repos, r);
     }
 
 #if 0
@@ -729,12 +719,17 @@ main (int   argc,
   int sel_flags = SELECTION_NAME | SELECTION_PROVIDES | SELECTION_GLOB;
   g_auto(Queue) sel;
   queue_init (&sel);
-  for (int i = optind; i < argc; i++)
+  for (GStrv solvable = solvables; solvable && *solvable; solvable++)
     {
-      selection_make (pool, &sel, argv[i], sel_flags);
+      selection_make (pool, &sel, *solvable, sel_flags);
       g_auto(Queue) q;
       queue_init (&q);
       selection_solvables (pool, &sel, &q);
+      if (!q.count)
+        {
+          g_warning ("Nothing matches '%s'", *solvable);
+          continue;
+        }
       pool_best_solvables (pool, &q, 0);
       for (int j = 0; j < q.count; j++)
         queue_push (&pile, q.elements[j]);
@@ -745,6 +740,7 @@ main (int   argc,
   g_auto(Queue) job;
   queue_init (&job);
   gboolean all_tested = FALSE;
+  gboolean solv_failed = FALSE;
   do
     {
       for (int i = 0; i < pile.count; i++)
@@ -781,7 +777,7 @@ main (int   argc,
                     }
                   }
               else
-                ret = EXIT_FAILURE;
+                solv_failed = TRUE;
             }
           else
             {
@@ -789,7 +785,7 @@ main (int   argc,
               g_autoptr(GArray) transactions = gather_alternatives (pool, &job);
 
               if (transactions->len == 0)
-                ret = EXIT_FAILURE;
+                solv_failed = TRUE;
 
               for (unsigned int i = 0; i < transactions->len; i++)
                 {
@@ -848,7 +844,7 @@ main (int   argc,
                                 }
                             }
                           else
-                            ret = EXIT_FAILURE;
+                            solv_failed = TRUE;
                         }
                     }
                   pool->pooljobs = pjobs;
@@ -867,8 +863,13 @@ main (int   argc,
     }
   while (!all_tested);
 
-  if (ret != EXIT_SUCCESS)
-    return ret;
+  if (solv_failed)
+    {
+      g_set_error_literal (&err,
+                           G_IO_ERROR, G_IO_ERROR_FAILED,
+                           "Can't resolve all solvables");
+      exiterr (err);
+    }
 
   for (int i = 0; i < pile.count; i++)
     {
@@ -878,5 +879,8 @@ main (int   argc,
       g_print ("%s\n", pool_solvable2str (pool, s));
     }
 
-  return ret;
+  if (err)
+    exiterr (err);
+
+  return EXIT_SUCCESS;
 }
