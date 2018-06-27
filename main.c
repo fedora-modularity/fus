@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <glib.h>
 #include <modulemd.h>
+#include <solv/policy.h>
 #include <solv/pool.h>
 #include <solv/poolarch.h>
 #include <solv/selection.h>
@@ -697,6 +698,7 @@ main (int   argc,
       g_auto(Queue) q;
       queue_init (&q);
       selection_solvables (pool, &sel, &q);
+      pool_best_solvables (pool, &q, 0);
       for (int j = 0; j < q.count; j++)
         queue_push (&pile, q.elements[j]);
     }
