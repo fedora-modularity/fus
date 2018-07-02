@@ -873,12 +873,7 @@ main (int   argc,
   while (!all_tested);
 
   if (solv_failed)
-    {
-      g_set_error_literal (&err,
-                           G_IO_ERROR, G_IO_ERROR_FAILED,
-                           "Can't resolve all solvables");
-      exiterr (err);
-    }
+    g_warning ("Can't resolve all solvables");
 
   for (int i = 0; i < pile.count; i++)
     {
