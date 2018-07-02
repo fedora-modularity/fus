@@ -718,7 +718,8 @@ main (int   argc,
   g_auto(Queue) pile;
   queue_init (&pile);
 
-  int sel_flags = SELECTION_NAME | SELECTION_PROVIDES | SELECTION_GLOB;
+  int sel_flags = SELECTION_NAME | SELECTION_PROVIDES | SELECTION_GLOB |
+                  SELECTION_CANON | SELECTION_DOTARCH;
   g_auto(Queue) sel;
   queue_init (&sel);
   for (GStrv solvable = solvables; solvable && *solvable; solvable++)
