@@ -1,4 +1,4 @@
-project('fus', 'c')
+project('fus', 'c', license : 'GPL-3.0+')
 
 dep_glib = dependency('glib-2.0')
 dep_gio = dependency('gio-2.0')
