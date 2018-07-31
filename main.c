@@ -24,6 +24,7 @@ G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(Map, map_free);
 
 #define TMPL_NPROV "module(%s)"
 #define TMPL_NSPROV "module(%s:%s)"
+#define MODPKG_PROV "modular-package()"
 
 static inline Id
 dep_or_rel (Pool *pool, Id dep, Id rel, Id op)
@@ -196,13 +197,6 @@ add_module_solvables (Repo           *repo,
         }
 
       {
-        g_auto(Queue) repofilter;
-        queue_init (&repofilter);
-        queue_push2 (&repofilter, SOLVER_SOLVABLE_REPO | SOLVER_SETREPO, repo->repoid);
-        selection_filter (pool, &sel, &repofilter);
-      }
-
-      {
         g_auto(Queue) rpms;
         queue_init (&rpms);
         selection_solvables (pool, &sel, &rpms);
@@ -212,6 +206,10 @@ add_module_solvables (Repo           *repo,
 
             /* Req: module:$n:$s:$v:$c . $a */
             solvable_add_deparray (s, SOLVABLE_REQUIRES, sdep, 0);
+
+            /* Prv: modular-package() */
+            Id modpkg = pool_str2id (pool, MODPKG_PROV, 1);
+            solvable_add_deparray (s, SOLVABLE_PROVIDES, modpkg, 0);
           }
       }
     }
@@ -876,12 +874,20 @@ main (int   argc,
   if (solv_failed)
     g_warning ("Can't resolve all solvables");
 
+  g_auto(Map) modular_pkgs;
+  map_init (&modular_pkgs, pool->nsolvables);
+  Id *pp = pool_whatprovides_ptr (pool, pool_str2id (pool, MODPKG_PROV, 1));
+  for (; *pp; pp++)
+    map_set (&modular_pkgs, *pp);
   for (int i = 0; i < pile.count; i++)
     {
-      Solvable *s = pool_id2solvable (pool, pile.elements[i]);
+      Id p = pile.elements[i];
+      Solvable *s = pool_id2solvable (pool, p);
       if (g_hash_table_contains (lookaside_repos, s->repo))
         continue;
-      g_print ("%s@%s\n", pool_solvable2str (pool, s), s->repo->name);
+      g_print ("%s%s@%s\n",
+               map_tst (&modular_pkgs, p) ? "*" : "",
+               pool_solvable2str (pool, s), s->repo->name);
     }
 
   if (err)
