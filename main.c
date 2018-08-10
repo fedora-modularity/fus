@@ -423,8 +423,6 @@ solve (Pool *pool, Queue *jobs)
       return NULL;
     }
 
-  g_autofree char *result = testcase_solverresult (solver, TESTCASE_RESULT_JOBS | TESTCASE_RESULT_ALTERNATIVES);
-
   return solver;
 }
 
