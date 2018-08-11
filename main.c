@@ -554,6 +554,64 @@ exiterr (GError *error)
   exit (EXIT_FAILURE);
 }
 
+/**
+ * apply_excludes:
+ * @pool: initialized pool
+ * @exclude_packages: names of packages to be excluded
+ * @lookaside_repos: set of repos that will not have packages excluded
+ * @modular_pkgs: map of modular packages that exclusion does not apply to
+ *
+ * Apply excludes: this completely hides the package from any processing.
+ * Packages in lookaside are not removed, and neither are modular packages.
+ */
+static Map
+apply_excludes (Pool       *pool,
+                GStrv       exclude_packages,
+                GHashTable *lookaside_repos,
+                Map        *modular_pkgs)
+{
+  Map excludes;
+  map_init (&excludes, pool->nsolvables);
+  /* This map has 1 for all available packages, 0 for excluded ones. */
+  map_setall (&excludes);
+
+  for (GStrv exclude = exclude_packages; exclude && *exclude; exclude++)
+    {
+      g_auto(Queue) sel;
+      queue_init (&sel);
+      selection_make (pool, &sel, *exclude, SELECTION_NAME | SELECTION_DOTARCH);
+      if (!sel.count)
+        {
+          g_warning ("Nothing matches exclude '%s'", *exclude);
+          continue;
+        }
+
+      g_auto(Queue) q;
+      queue_init (&q);
+      selection_solvables (pool, &sel, &q);
+
+      for (int j = 0; j < q.count; j++)
+        {
+          Id p = q.elements[j];
+          Solvable *s = pool_id2solvable (pool, p);
+          /* Ignore packages from lookaside. */
+          if (g_hash_table_contains (lookaside_repos, s->repo))
+            continue;
+
+          /* Modular package, not excluding... */
+          if (map_tst (modular_pkgs, p))
+            continue;
+
+          g_info ("Excluding %s (based on %s)",
+		  pool_solvable2str (pool, s),
+		  *exclude);
+          map_clr (&excludes, p);
+        }
+    }
+
+  return excludes;
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -565,12 +623,14 @@ main (int   argc,
   static char *platform = NULL;
   GStrv static solvables = NULL;
   GStrv static repos = NULL;
+  GStrv static exclude_packages = NULL;
   static gboolean verbose = FALSE;
   static const GOptionEntry opts[] = {
     { "verbose", 'v', 0, G_OPTION_ARG_NONE, &verbose, "Show extra debugging information", NULL },
     { "arch", 'a', 0, G_OPTION_ARG_STRING, &arch, "Architecture to work with", "ARCH" },
     { "repo", 'r', 0, G_OPTION_ARG_STRING_ARRAY, &repos, "Information about repo (id,type,path)", "REPO" },
     { "platform", 'p', 0, G_OPTION_ARG_STRING, &platform, "Emulate this stream of a platform", "STREAM" },
+    { "exclude", 0, 0, G_OPTION_ARG_STRING_ARRAY, &exclude_packages, "Exclude this package", "NAME" },
     { G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &solvables, "Things to resolve", "SOLVABLE…" },
     { NULL }
   };
@@ -699,10 +759,19 @@ main (int   argc,
   pool_addfileprovides (pool);
   pool_createwhatprovides (pool);
 
+  /* Precompute map of modular packages. */
+  g_auto(Map) modular_pkgs;
+  map_init (&modular_pkgs, pool->nsolvables);
+  Id *pp = pool_whatprovides_ptr (pool, pool_str2id (pool, MODPKG_PROV, 1));
+  for (; *pp; pp++)
+    map_set (&modular_pkgs, *pp);
+
+  /* Find out excluded packages */
+  g_auto(Map) excludes = apply_excludes (pool, exclude_packages, lookaside_repos, &modular_pkgs);
+
   g_auto(Map) considered;
   pool->considered = &considered;
-  map_init (pool->considered, pool->nsolvables);
-  map_setall (pool->considered);
+  map_init_clone (pool->considered, &excludes);
 
   Id ndef_modules_rel = pool_rel2id (pool,
                                      pool_str2id (pool, "module()", 1),
@@ -757,7 +826,8 @@ main (int   argc,
 
           Solvable *s = pool_id2solvable (pool, p);
 
-          map_setall (pool->considered);
+          map_free (pool->considered);
+          map_init_clone (pool->considered, &excludes);
 
           queue_empty (&job);
           queue_push2 (&job, SOLVER_SOLVABLE | SOLVER_INSTALL, p);
@@ -872,11 +942,6 @@ main (int   argc,
   if (solv_failed)
     g_warning ("Can't resolve all solvables");
 
-  g_auto(Map) modular_pkgs;
-  map_init (&modular_pkgs, pool->nsolvables);
-  Id *pp = pool_whatprovides_ptr (pool, pool_str2id (pool, MODPKG_PROV, 1));
-  for (; *pp; pp++)
-    map_set (&modular_pkgs, *pp);
   for (int i = 0; i < pile.count; i++)
     {
       Id p = pile.elements[i];
