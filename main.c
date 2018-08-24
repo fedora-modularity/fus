@@ -26,6 +26,8 @@ G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(Map, map_free);
 #define TMPL_NSPROV "module(%s:%s)"
 #define MODPKG_PROV "modular-package()"
 
+static gboolean load_repo_filelists = TRUE;
+
 static inline Id
 dep_or_rel (Pool *pool, Id dep, Id rel, Id op)
 {
@@ -359,14 +361,15 @@ create_repo (Pool       *pool,
       fclose (fp);
     }
 
-#if 0
-  fname = repomd_find (repo, "filelists", &chksum, &chksumtype);
-  fp = solv_xfopen (pool_tmpjoin (pool, path, "/", fname), 0);
-  repo_add_rpmmd (repo, fp, NULL, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
-  fclose (fp);
+  if (load_repo_filelists)
+    {
+      fname = repomd_find (repo, "filelists", &chksum, &chksumtype);
+      fp = solv_xfopen (pool_tmpjoin (pool, path, "/", fname), 0);
+      repo_add_rpmmd (repo, fp, NULL, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
+      fclose (fp);
 
-  pool_addfileprovides (pool);
-#endif
+      pool_addfileprovides (pool);
+    }
   pool_createwhatprovides (pool);
 
   fname = repomd_find (repo, "modules", &chksum, &chksumtype);
@@ -631,6 +634,8 @@ main (int   argc,
     { "repo", 'r', 0, G_OPTION_ARG_STRING_ARRAY, &repos, "Information about repo (id,type,path)", "REPO" },
     { "platform", 'p', 0, G_OPTION_ARG_STRING, &platform, "Emulate this stream of a platform", "STREAM" },
     { "exclude", 0, 0, G_OPTION_ARG_STRING_ARRAY, &exclude_packages, "Exclude this package", "NAME" },
+    { "load-filelists", 0, 0, G_OPTION_ARG_NONE, &load_repo_filelists, "Load filelists from repo(s) (default)", NULL },
+    { "no-load-filelists", 0, G_OPTION_FLAG_REVERSE, G_OPTION_ARG_NONE, &load_repo_filelists, "Don't load filelists from repo(s)", NULL },
     { G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_STRING_ARRAY, &solvables, "Things to resolve", "SOLVABLE…" },
     { NULL }
   };
