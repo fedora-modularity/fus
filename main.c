@@ -877,7 +877,10 @@ main (int   argc,
                       g_debug ("    - %s", pool_solvid2str (pool, p));
                     }
 
-                  map_setall (pool->considered);
+                  /* Reset considered packages to everything minus excludes. */
+                  map_free (pool->considered);
+                  map_init_clone (pool->considered, &excludes);
+
                   /* Disable all non-default unrelated modules */
                   Id *pp = ndef_modules;
                   for (; *pp; pp++)
