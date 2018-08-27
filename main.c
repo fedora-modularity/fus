@@ -778,7 +778,6 @@ main (int   argc,
                                      pool_str2id (pool, "module-default()", 1),
                                      REL_WITHOUT,
                                      1);
-  Id *ndef_modules = pool_whatprovides_ptr (pool, ndef_modules_rel);
 
   g_auto(Queue) pile;
   queue_init (&pile);
@@ -882,7 +881,7 @@ main (int   argc,
                   map_init_clone (pool->considered, &excludes);
 
                   /* Disable all non-default unrelated modules */
-                  Id *pp = ndef_modules;
+                  Id *pp = pool_whatprovides_ptr (pool, ndef_modules_rel);
                   for (; *pp; pp++)
                     if (!queue_contains (&t, *pp))
                       map_clr (pool->considered, *pp);
