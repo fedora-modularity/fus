@@ -354,6 +354,30 @@ repomd_find (Repo                 *repo,
   return filename;
 }
 
+static int
+filelist_loadcb (Pool     *pool,
+                 Repodata *data,
+                 void     *cdata)
+{
+  FILE *fp;
+  const char *fpath, *type;
+  Repo *repo = data->repo;
+
+  type = repodata_lookup_str (data, SOLVID_META, REPOSITORY_REPOMD_TYPE);
+  if (strcmp (type, "filelists"))
+    {
+      return 0;
+    }
+
+  fpath = repodata_lookup_str (data, SOLVID_META, REPOSITORY_REPOMD_LOCATION);
+
+  fp = solv_xfopen (fpath, 0);
+  repo_add_rpmmd (repo, fp, NULL, REPO_USE_LOADING | REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
+  fclose (fp);
+
+  return 1;
+}
+
 static Repo *
 create_repo (Pool       *pool,
              const char *name,
@@ -388,14 +412,22 @@ create_repo (Pool       *pool,
       fclose (fp);
     }
 
-#if 0
   fname = repomd_find (repo, "filelists", &chksum, &chksumtype);
-  fp = solv_xfopen (pool_tmpjoin (pool, path, "/", fname), 0);
-  repo_add_rpmmd (repo, fp, NULL, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
-  fclose (fp);
+  if (fname)
+    {
+      Repodata *data = repo_add_repodata (repo, 0);
+      repodata_extend_block (data, repo->start, repo->end - repo->start);
+      Id handle = repodata_new_handle(data);
+      repodata_set_poolstr (data, handle, REPOSITORY_REPOMD_TYPE, "filelists");
+      repodata_set_str (data, handle, REPOSITORY_REPOMD_LOCATION, pool_tmpjoin (pool, path, "/", fname));
+      repodata_set_bin_checksum (data, handle, REPOSITORY_REPOMD_CHECKSUM, chksumtype, chksum);
+      repodata_add_idarray (data, handle, REPOSITORY_KEYS, SOLVABLE_FILELIST);
+      repodata_add_idarray (data, handle, REPOSITORY_KEYS, REPOKEY_TYPE_DIRSTRARRAY);
+      repodata_add_flexarray (data, SOLVID_META, REPOSITORY_EXTERNAL, handle);
+      repodata_internalize (data);
+      repodata_create_stubs(repo_last_repodata (repo));
+    }
 
-  pool_addfileprovides (pool);
-#endif
   pool_createwhatprovides (pool);
 
   fname = repomd_find (repo, "modules", &chksum, &chksumtype);
@@ -885,6 +917,7 @@ main (int   argc,
     }
 
   g_autoptr(Pool) pool = pool_create ();
+  pool_setloadcallback (pool, filelist_loadcb, 0);
 
   if (verbose)
     g_setenv ("G_MESSAGES_DEBUG", "fus", FALSE);
@@ -914,6 +947,7 @@ main (int   argc,
       if (g_strcmp0 (strv[1], "lookaside") == 0)
         g_hash_table_add (lookaside_repos, r);
     }
+  pool_addfileprovides (pool);
 
 #if 0
   FILE *fp;
