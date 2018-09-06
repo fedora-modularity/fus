@@ -755,6 +755,53 @@ _install_transaction (Pool         *pool,
   return TRUE;
 }
 
+/**
+ * mask_bare_rpms:
+ * @pool: initialized pool
+ *
+ * For each available modular package, find all bare RPMs with the same name,
+ * and mark them as not considered.
+ */
+static void
+mask_bare_rpms(Pool *pool)
+{
+  Id *available_modular_packages = pool_whatprovides_ptr (pool, pool_str2id (pool, MODPKG_PROV, 1));
+  for (Id *pp = available_modular_packages; *pp; pp++)
+    {
+      Solvable *modpkg = pool_id2solvable (pool, *pp);
+      const gchar *name = pool_id2str (pool, modpkg->name);
+
+      g_auto(Queue) sel;
+      queue_init (&sel);
+      selection_make (pool, &sel, name, SELECTION_NAME);
+      if (!sel.count)
+        {
+          /* This should never happen, at least one package
+           * should match (the modular one). */
+          continue;
+        }
+      g_auto(Queue) q;
+      queue_init (&q);
+      selection_solvables (pool, &sel, &q);
+
+      for (int j = 0; j < q.count; j++)
+        {
+          Id p = q.elements[j];
+          gboolean is_modular = FALSE;
+          for (Id *i = available_modular_packages; *i; i++)
+            {
+              if (*i == p)
+                {
+                  is_modular = TRUE;
+                  break;
+                }
+            }
+          if (!is_modular)
+            map_clr (pool->considered, p);
+        }
+    }
+}
+
 
 static gboolean
 resolve_all_solvables (Pool  *pool,
@@ -796,6 +843,7 @@ resolve_all_solvables (Pool  *pool,
           if (!g_str_has_prefix (pool_id2str (pool, s->name), "module:"))
             {
               g_debug ("Installing %s:", pool_solvid2str (pool, p));
+              mask_bare_rpms(pool);
 
               if (!_install_transaction (pool, pile, &job, &tested, 2))
                 solv_failed = TRUE;
@@ -831,6 +879,8 @@ resolve_all_solvables (Pool  *pool,
                   for (; *pp; pp++)
                     if (!queue_contains (&t, *pp))
                       map_clr (pool->considered, *pp);
+
+                  mask_bare_rpms(pool);
 
                   Queue pjobs = pool->pooljobs;
                   pool->pooljobs = job;
