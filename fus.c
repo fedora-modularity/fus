@@ -728,6 +728,7 @@ static gboolean
 _install_transaction (Pool         *pool,
                       Queue        *pile,
                       Queue        *job,
+                      Map          *tested,
                       unsigned int  indent)
 {
   g_autoptr(Solver) solver = solve (pool, job);
@@ -742,7 +743,13 @@ _install_transaction (Pool         *pool,
     {
       Id p = installedq.elements[x];
       queue_pushunique (pile, p);
-      g_debug ("%*c - %s", indent, ' ', pool_solvid2str (pool, p));
+      const gchar *solvable = pool_solvid2str (pool, p);
+      g_debug ("%*c - %s", indent, ' ', solvable);
+      /* Non-modules are immediately resolved as resolved, since for RPM the
+       * result would not change if done again. However for modules we need to
+       * make sure we look at all combinations. */
+      if (!g_str_has_prefix (solvable, "module:"))
+        map_set (tested, p);
     }
 
   return TRUE;
@@ -790,7 +797,7 @@ resolve_all_solvables (Pool  *pool,
             {
               g_debug ("Installing %s:", pool_solvid2str (pool, p));
 
-              if (!_install_transaction (pool, pile, &job, 2))
+              if (!_install_transaction (pool, pile, &job, &tested, 2))
                 solv_failed = TRUE;
             }
           else
@@ -846,7 +853,7 @@ resolve_all_solvables (Pool  *pool,
                           queue_push2 (&j, SOLVER_SOLVABLE | SOLVER_INSTALL, p);
                           g_debug ("    Installing %s:", pool_solvid2str (pool, p));
 
-                          if (!_install_transaction (pool, pile, &j, 6))
+                          if (!_install_transaction (pool, pile, &j, &tested, 6))
                             solv_failed = TRUE;
                         }
                     }
