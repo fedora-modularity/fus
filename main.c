@@ -54,7 +54,7 @@ parse_module_requires (Pool       *pool,
           if (s[0] == '-')
             {
               r = &req_neg;
-              ss++;
+              s++;
             }
           else
             {
