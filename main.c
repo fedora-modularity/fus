@@ -17,6 +17,7 @@
 #include <solv/solv_xfopen.h>
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(Pool, pool_free);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(Queue, queue_free);
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(Solver, solver_free);
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(Transaction, transaction_free);
 G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(Queue, queue_free);
@@ -818,33 +819,91 @@ resolve_all_solvables (Pool  *pool,
   return solv_failed;
 }
 
-static Queue
-pile_from_solvables (Pool  *pool,
-                     GStrv  solvables)
+static void
+add_solvable_to_pile (const char *solvable,
+                      Pool       *pool,
+                      Queue      *pile)
 {
-  Queue pile;
-  queue_init (&pile);
   int sel_flags = SELECTION_NAME | SELECTION_PROVIDES | SELECTION_GLOB |
                   SELECTION_CANON | SELECTION_DOTARCH;
   g_auto(Queue) sel;
   queue_init (&sel);
-  for (GStrv solvable = solvables; solvable && *solvable; solvable++)
+  selection_make (pool, &sel, solvable, sel_flags);
+  g_auto(Queue) q;
+  queue_init (&q);
+  selection_solvables (pool, &sel, &q);
+  if (!q.count)
     {
-      selection_make (pool, &sel, *solvable, sel_flags);
-      g_auto(Queue) q;
-      queue_init (&q);
-      selection_solvables (pool, &sel, &q);
-      if (!q.count)
-        {
-          g_warning ("Nothing matches '%s'", *solvable);
-          continue;
-        }
-      pool_best_solvables (pool, &q, 0);
-      for (int j = 0; j < q.count; j++)
-        queue_push (&pile, q.elements[j]);
+      g_warning ("Nothing matches '%s'", solvable);
+      return;
+    }
+  pool_best_solvables (pool, &q, 0);
+  for (int j = 0; j < q.count; j++)
+    queue_push (pile, q.elements[j]);
+}
+
+static void
+add_solvables_from_file_to_pile (const char  *filename,
+                                 Pool        *pool,
+                                 Queue       *pile,
+                                 GError     **error)
+{
+  GIOChannel *ch = g_io_channel_new_file (filename, "r", error);
+  if (ch == NULL)
+    {
+      g_prefix_error (error, "Unable to open file '%s': ", filename);
+      return;
     }
 
-  return pile;
+  GIOStatus ret;
+  do
+    {
+      g_autofree gchar *content = NULL;
+      gsize length, tpos;
+
+      ret = g_io_channel_read_line (ch, &content, &length, &tpos, error);
+      if (ret != G_IO_STATUS_NORMAL || content == NULL)
+        continue;
+
+      content[tpos] = '\0';
+      if (*content)
+        add_solvable_to_pile (content, pool, pile);
+    }
+  while (ret == G_IO_STATUS_NORMAL);
+
+  if (ret != G_IO_STATUS_EOF)
+    {
+      g_prefix_error (error, "Failure while reading file '%s': ", filename);
+      return;
+    }
+
+  /* make sure any error is cleared to indicate success */
+  g_clear_error (error);
+}
+
+static Queue *
+pile_from_solvables (Pool    *pool,
+                     GStrv    solvables,
+                     GError **error)
+{
+  g_return_val_if_fail (*error == NULL, NULL);
+
+  g_autoptr(Queue) pile = g_malloc (sizeof (Queue));
+  queue_init (pile);
+
+  for (GStrv solvable = solvables; solvable && *solvable; solvable++)
+    {
+      /* solvables prefixed by @ are file names */
+      if (**solvable == '@')
+        add_solvables_from_file_to_pile (*solvable + 1, pool, pile, error);
+      else
+        add_solvable_to_pile (*solvable, pool, pile);
+
+      if (*error)
+        return NULL;
+    }
+
+  return g_steal_pointer (&pile);
 }
 
 int
@@ -989,8 +1048,10 @@ main (int   argc,
   pool->considered = &considered;
   map_init_clone (pool->considered, &excludes);
 
-  g_auto(Queue) pile = pile_from_solvables (pool, solvables);
-  if (!pile.count)
+  g_autoptr(Queue) pile = pile_from_solvables (pool, solvables, &err);
+  if (!pile)
+    exiterr (err);
+  if (!pile->count)
     {
       g_set_error_literal (&err,
                            G_OPTION_ERROR, G_OPTION_ERROR_FAILED,
@@ -998,14 +1059,14 @@ main (int   argc,
       exiterr (err);
     }
 
-  gboolean solv_failed = resolve_all_solvables (pool, &pile, &excludes);
+  gboolean solv_failed = resolve_all_solvables (pool, pile, &excludes);
   if (solv_failed)
     g_warning ("Can't resolve all solvables");
 
   /* Output resolved packages */
-  for (int i = 0; i < pile.count; i++)
+  for (int i = 0; i < pile->count; i++)
     {
-      Id p = pile.elements[i];
+      Id p = pile->elements[i];
       Solvable *s = pool_id2solvable (pool, p);
       if (g_hash_table_contains (lookaside_repos, s->repo))
         continue;
