@@ -765,10 +765,25 @@ _install_transaction (Pool         *pool,
 static void
 mask_bare_rpms(Pool *pool)
 {
-  Id *available_modular_packages = pool_whatprovides_ptr (pool, pool_str2id (pool, MODPKG_PROV, 1));
-  for (Id *pp = available_modular_packages; *pp; pp++)
+  /* Get array of all existing modular packages. */
+  Id *modular_packages = pool_whatprovides_ptr (pool, pool_str2id (pool, MODPKG_PROV, 1));
+
+  /* Filter it to keep only available packages. A package that is not
+   * considered should not mask anything. */
+  g_auto(Queue) available_modular_pkgs;
+  queue_init(&available_modular_pkgs);
+  for (Id *pp = modular_packages; *pp; pp++)
     {
-      Solvable *modpkg = pool_id2solvable (pool, *pp);
+      if (map_tst (pool->considered, *pp))
+        {
+          queue_push (&available_modular_pkgs, *pp);
+        }
+    }
+
+  for (int i = 0; i < available_modular_pkgs.count; i++)
+    {
+      Id pp = available_modular_pkgs.elements[i];
+      Solvable *modpkg = pool_id2solvable (pool, pp);
       const gchar *name = pool_id2str (pool, modpkg->name);
 
       g_auto(Queue) sel;
@@ -787,18 +802,41 @@ mask_bare_rpms(Pool *pool)
       for (int j = 0; j < q.count; j++)
         {
           Id p = q.elements[j];
-          gboolean is_modular = FALSE;
-          for (Id *i = available_modular_packages; *i; i++)
+          if (!queue_contains (&available_modular_pkgs, p))
             {
-              if (*i == p)
-                {
-                  is_modular = TRUE;
-                  break;
-                }
+              map_clr (pool->considered, p);
             }
-          if (!is_modular)
-            map_clr (pool->considered, p);
         }
+    }
+}
+
+/**
+ * disable_module:
+ * @pool: initialized pool
+ * @module: Id of the module to be disabled
+ *
+ * Set the module and all packages in it as not considered. The packages would
+ * not be pulled in anyway since that would require pulling in disabled module,
+ * but if they are considered, it would cause problems with masking unavailable
+ * packages since we wouldn't really know which modular packages are available.
+ */
+static void
+disable_module (Pool *pool, Id module)
+{
+  // g_debug ("Disabling %s", pool_solvid2str(pool, module));
+  map_clr (pool->considered, module);
+
+  Solvable *s = pool_id2solvable (pool, module);
+  g_auto(Queue) q;
+  queue_init (&q);
+  Id dep = pool_rel2id (pool, s->name, s->arch, REL_ARCH, 1);
+  pool_whatcontainsdep (pool, SOLVABLE_REQUIRES, dep, &q, 0);
+
+  for (int k = 0; k < q.count; k++)
+    {
+      Id p = q.elements[k];
+      //g_debug ("  - %s", pool_solvid2str (pool, p));
+      map_clr (pool->considered, p);
     }
 }
 
@@ -877,8 +915,12 @@ resolve_all_solvables (Pool  *pool,
                   /* Disable all non-default unrelated modules */
                   Id *pp = pool_whatprovides_ptr (pool, ndef_modules_rel);
                   for (; *pp; pp++)
-                    if (!queue_contains (&t, *pp))
-                      map_clr (pool->considered, *pp);
+                    {
+                      if (!queue_contains (&t, *pp))
+                      {
+                        disable_module (pool, *pp);
+                      }
+                    }
 
                   mask_bare_rpms(pool);
 
