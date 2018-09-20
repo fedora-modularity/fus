@@ -388,14 +388,12 @@ create_repo (Pool       *pool,
       fclose (fp);
     }
 
-#if 0
   fname = repomd_find (repo, "filelists", &chksum, &chksumtype);
   fp = solv_xfopen (pool_tmpjoin (pool, path, "/", fname), 0);
   repo_add_rpmmd (repo, fp, NULL, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
   fclose (fp);
 
   pool_addfileprovides (pool);
-#endif
   pool_createwhatprovides (pool);
 
   fname = repomd_find (repo, "modules", &chksum, &chksumtype);
