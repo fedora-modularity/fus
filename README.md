@@ -47,3 +47,18 @@ Item to include in the input can have one of the following forms.
 * `module(NAME)` or `module(NAME:STREAM)` for modules
 * `group:foo` or `category:bar` for comps input
 * just package name, or a glob matched against package names
+
+
+## Testing
+
+To run all the available tests:
+
+```
+$ ninja -C builddir test
+```
+
+Or to have more control on which tests are run, use `gtester`:
+
+```
+$ G_TEST_SRCDIR=$PWD/tests gtester builddir/tests
+```

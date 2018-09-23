@@ -242,6 +242,12 @@ add_module_solvables (Repo           *repo,
                              0);
 
       add_module_dependencies (pool, solvable, deps);
+#ifdef FUS_TESTING
+      /* This is needed when running tests because add_module_rpm_artifacts
+       * relies on provides being created
+       */
+      pool_createwhatprovides (pool);
+#endif
       add_module_rpm_artifacts (pool, module, sdep);
     }
 
@@ -314,6 +320,29 @@ repo_add_modulemd (Repo       *repo,
 
   return 0;
 }
+
+#ifdef FUS_TESTING
+static Repo *
+create_test_repo (Pool       *pool,
+                  const char *name,
+                  const char *type,
+                  const char *path)
+{
+  Repo *repo = repo_create (pool, name);
+
+  FILE *fp = fopen (path, "r");
+  /* Open a file with module metadata and load the content to the repo */
+  if (g_strcmp0 (type, "modular") == 0)
+    repo_add_modulemd (repo, fp, NULL, 0);
+  else
+    testcase_add_testtags (repo, fp, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
+
+  fclose (fp);
+
+  return repo;
+}
+
+#else
 
 static const char *
 repomd_find (Repo                 *repo,
@@ -435,6 +464,7 @@ create_repo (Pool       *pool,
 
   return repo;
 }
+#endif
 
 static Solver *
 solve (Pool *pool, Queue *jobs)
@@ -930,7 +960,9 @@ fus_depsolve (const char *arch,
               GError    **error)
 {
   g_autoptr(Pool) pool = pool_create ();
+#ifndef FUS_TESTING
   pool_setloadcallback (pool, filelist_loadcb, 0);
+#endif
 
   pool_setarch (pool, arch);
 
@@ -946,7 +978,12 @@ fus_depsolve (const char *arch,
   for (GStrv repo = repos; repo && *repo; repo++)
     {
       g_auto(GStrv) strv = g_strsplit (*repo, ",", 3);
-      Repo *r = create_repo (pool, strv[0], strv[2]);
+      Repo *r = NULL;
+#ifdef FUS_TESTING
+        r = create_test_repo (pool, strv[0], strv[1], strv[2]);
+#else
+        r = create_repo (pool, strv[0], strv[2]);
+#endif
       if (g_strcmp0 (strv[1], "lookaside") == 0)
         g_hash_table_add (lookaside_repos, r);
     }
