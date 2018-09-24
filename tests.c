@@ -120,6 +120,7 @@ int main (int argc, char **argv)
 
   ADD_TEST ("/ursine/simple", "ursine");
   ADD_TEST ("/require/negative", "negative");
+  ADD_TEST ("/require/positive", "positive");
 
   return g_test_run ();
 }
