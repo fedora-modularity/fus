@@ -119,6 +119,7 @@ int main (int argc, char **argv)
   g_test_bug_base ("https://github.com/fedora-modularity/fus/issues");
 
   ADD_TEST ("/ursine/simple", "ursine");
+  ADD_TEST ("/require/negative", "negative");
 
   return g_test_run ();
 }

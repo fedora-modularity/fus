@@ -1,0 +1,12 @@
+=Ver: 2.0
+
+# Required by X-1-1+a
+=Pkg: A1 1 1 noarch
+=Prv: A = 1
+
+# Required by X-1-1+b
+=Pkg: A2 2 1 noarch
+=Prv: A = 2
+
+# Just random RPM
+=Pkg: Z 1 1 noarch

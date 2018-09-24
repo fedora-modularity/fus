@@ -1,0 +1,83 @@
+---
+document: modulemd
+version: 2
+data:
+  name: C
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - C-0:1-1.noarch
+      - CX-0:1-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: C
+  stream: shiny
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - C-0:2-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: C
+  stream: glossy
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - C-0:2-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: C
+  stream: lustrous
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - C-0:2-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: D
+  stream: stable
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - D-0:1-1.noarch
+  dependencies:
+    - requires:
+        C: [-shiny, -glossy, -lustrous]
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+  module: C
+  stream: master
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+  module: D
+  stream: stable
+...

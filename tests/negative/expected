@@ -1,0 +1,5 @@
+module:C:master:2018:deadbeef.noarch@yaml
+module:D:stable:2018:deadbeef.noarch@yaml
+*C-1-1.noarch@repo
+*CX-1-1.noarch@repo
+*D-1-1.noarch@repo

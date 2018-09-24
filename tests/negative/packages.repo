@@ -1,0 +1,18 @@
+=Ver: 2.0
+
+# Belongs to module:C:master:2018:deadbeef:noarch (default)
+=Pkg: C 1 1 noarch
+# Nothing pulls this in, but we want to get it in
+# because we pulled module:C implicitly.
+=Pkg: CX 1 1 noarch
+
+# Belongs to module:C:shiny:2018:deadbeef:noarch
+# Belongs to module:C:glossy:2018:deadbeef:noarch
+# Belongs to module:C:lustrous:2018:deadbeef:noarch
+=Pkg: C 2 1 noarch
+
+# Belongs to module:D:stable:2018:deadbeef:noarch (default)
+=Pkg: D 1 1 noarch
+
+# Belongs to module:D:master:2018:deadbeef:noarch
+=Pkg: D 2 1 noarch
