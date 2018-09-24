@@ -57,9 +57,7 @@ parse_module_requires (Pool       *pool,
               s++;
             }
           else
-            {
-              r = &req_pos;
-            }
+            r = &req_pos;
 
           g_autofree char *nsprov = g_strdup_printf (TMPL_NSPROV, n, s);
           *r = dep_or_rel (pool, *r, pool_str2id (pool, nsprov, 1), REL_OR);
@@ -100,11 +98,11 @@ add_module_dependencies (Pool      *pool,
 {
   Id requires = 0;
   for (unsigned int i = 0; i < deps->len; i++)
-  {
-    GHashTable *req = modulemd_dependencies_peek_requires (g_ptr_array_index (deps, i));
-    Id require = parse_module_requires (pool, req);
-    requires = dep_or_rel (pool, requires, require, REL_OR);
-  }
+    {
+      GHashTable *req = modulemd_dependencies_peek_requires (g_ptr_array_index (deps, i));
+      Id require = parse_module_requires (pool, req);
+      requires = dep_or_rel (pool, requires, require, REL_OR);
+    }
   solvable_add_deparray (solvable, SOLVABLE_REQUIRES, requires, 0);
 }
 
@@ -117,16 +115,16 @@ add_artifacts_dependencies (Pool  *pool,
   queue_init (&rpms);
   selection_solvables (pool, sel, &rpms);
   for (int i = 0; i < rpms.count; i++)
-  {
-    Solvable *s = pool_id2solvable (pool, rpms.elements[i]);
+    {
+      Solvable *s = pool_id2solvable (pool, rpms.elements[i]);
 
-    /* Req: module:$n:$s:$v:$c . $a */
-    solvable_add_deparray (s, SOLVABLE_REQUIRES, sdep, 0);
+      /* Req: module:$n:$s:$v:$c . $a */
+      solvable_add_deparray (s, SOLVABLE_REQUIRES, sdep, 0);
 
-    /* Prv: modular-package() */
-    Id modpkg = pool_str2id (pool, MODPKG_PROV, 1);
-    solvable_add_deparray (s, SOLVABLE_PROVIDES, modpkg, 0);
-  }
+      /* Prv: modular-package() */
+      Id modpkg = pool_str2id (pool, MODPKG_PROV, 1);
+      solvable_add_deparray (s, SOLVABLE_PROVIDES, modpkg, 0);
+    }
 }
 
 static void
@@ -138,54 +136,54 @@ add_module_rpm_artifacts (Pool           *pool,
   g_auto(Queue) sel;
   queue_init (&sel);
   for (; *rpm_artifacts; rpm_artifacts++)
-  {
-    const char *nevra = *rpm_artifacts;
-
-    const char *evr_delimiter = NULL;
-    const char *rel_delimiter = NULL;
-    const char *arch_delimiter = NULL;
-    const char *end;
-
-    for (end = nevra; *end; ++end)
     {
-      if (*end == '-')
-      {
-        evr_delimiter = rel_delimiter;
-        rel_delimiter = end;
-      }
-      else if (*end == '.')
-        arch_delimiter = end;
+      const char *nevra = *rpm_artifacts;
+
+      const char *evr_delimiter = NULL;
+      const char *rel_delimiter = NULL;
+      const char *arch_delimiter = NULL;
+      const char *end;
+
+      for (end = nevra; *end; ++end)
+        {
+          if (*end == '-')
+            {
+              evr_delimiter = rel_delimiter;
+              rel_delimiter = end;
+            }
+          else if (*end == '.')
+            arch_delimiter = end;
+        }
+
+      if (!evr_delimiter || evr_delimiter == nevra)
+        continue;
+
+      size_t name_len = evr_delimiter - nevra;
+
+      /* Strip "0:" epoch if present */
+      if (evr_delimiter[1] == '0' && evr_delimiter[2] == ':')
+        evr_delimiter += 2;
+
+      if (rel_delimiter - evr_delimiter <= 1 ||
+          !arch_delimiter || arch_delimiter <= rel_delimiter + 1 || arch_delimiter == end - 1)
+        continue;
+
+      Id nid, evrid, aid;
+      if (!(nid = pool_strn2id (pool, nevra, name_len, 0)))
+        continue;
+      evr_delimiter++;
+      if (!(evrid = pool_strn2id (pool, evr_delimiter, arch_delimiter - evr_delimiter, 0)))
+        continue;
+      arch_delimiter++;
+      if (!(aid = pool_strn2id (pool, arch_delimiter, end - arch_delimiter, 0)))
+        continue;
+
+      /* $n.$a = $evr */
+      Id rid = pool_rel2id (pool, nid, aid, REL_ARCH, 1);
+      rid = pool_rel2id (pool, rid, evrid, REL_EQ, 1);
+
+      queue_push2 (&sel, SOLVER_SOLVABLE_NAME | SOLVER_SETEVR | SOLVER_SETARCH, rid);
     }
-
-    if (!evr_delimiter || evr_delimiter == nevra)
-      continue;
-
-    size_t name_len = evr_delimiter - nevra;
-
-    /* Strip "0:" epoch if present */
-    if (evr_delimiter[1] == '0' && evr_delimiter[2] == ':')
-      evr_delimiter += 2;
-
-    if (rel_delimiter - evr_delimiter <= 1 ||
-        !arch_delimiter || arch_delimiter <= rel_delimiter + 1 || arch_delimiter == end - 1)
-      continue;
-
-    Id nid, evrid, aid;
-    if (!(nid = pool_strn2id (pool, nevra, name_len, 0)))
-      continue;
-    evr_delimiter++;
-    if (!(evrid = pool_strn2id (pool, evr_delimiter, arch_delimiter - evr_delimiter, 0)))
-      continue;
-    arch_delimiter++;
-    if (!(aid = pool_strn2id (pool, arch_delimiter, end - arch_delimiter, 0)))
-      continue;
-
-    /* $n.$a = $evr */
-    Id rid = pool_rel2id (pool, nid, aid, REL_ARCH, 1);
-    rid = pool_rel2id (pool, rid, evrid, REL_EQ, 1);
-
-    queue_push2 (&sel, SOLVER_SOLVABLE_NAME | SOLVER_SETEVR | SOLVER_SETARCH, rid);
-  }
 
   add_artifacts_dependencies (pool, &sel, sdep);
 }
