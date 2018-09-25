@@ -825,8 +825,8 @@ add_solvable_to_pile (const char *solvable,
                       Pool       *pool,
                       Queue      *pile)
 {
-  int sel_flags = SELECTION_NAME | SELECTION_PROVIDES | SELECTION_GLOB |
-                  SELECTION_CANON | SELECTION_DOTARCH;
+  static int sel_flags = SELECTION_NAME | SELECTION_PROVIDES | SELECTION_GLOB
+                         | SELECTION_CANON | SELECTION_DOTARCH;
   g_auto(Queue) sel;
   queue_init (&sel);
   selection_make (pool, &sel, solvable, sel_flags);
@@ -843,7 +843,7 @@ add_solvable_to_pile (const char *solvable,
     queue_push (pile, q.elements[j]);
 }
 
-static void
+static gboolean
 add_solvables_from_file_to_pile (const char  *filename,
                                  Pool        *pool,
                                  Queue       *pile,
@@ -852,8 +852,8 @@ add_solvables_from_file_to_pile (const char  *filename,
   GIOChannel *ch = g_io_channel_new_file (filename, "r", error);
   if (ch == NULL)
     {
-      g_prefix_error (error, "Unable to open file '%s': ", filename);
-      return;
+      g_prefix_error (error, "%s: ", filename);
+      return FALSE;
     }
 
   GIOStatus ret;
@@ -874,12 +874,13 @@ add_solvables_from_file_to_pile (const char  *filename,
 
   if (ret != G_IO_STATUS_EOF)
     {
-      g_prefix_error (error, "Failure while reading file '%s': ", filename);
-      return;
+      g_prefix_error (error, "%s: ", filename);
+      return FALSE;
     }
 
-  /* make sure any error is cleared to indicate success */
-  g_clear_error (error);
+  g_io_channel_unref (ch);
+
+  return TRUE;
 }
 
 static Queue *
@@ -887,21 +888,21 @@ pile_from_solvables (Pool    *pool,
                      GStrv    solvables,
                      GError **error)
 {
-  g_return_val_if_fail (*error == NULL, NULL);
+  g_return_val_if_fail (!error || !*error, NULL);
 
-  g_autoptr(Queue) pile = g_malloc (sizeof (Queue));
+  g_autoptr(Queue) pile = g_malloc0 (sizeof (Queue));
   queue_init (pile);
 
   for (GStrv solvable = solvables; solvable && *solvable; solvable++)
     {
       /* solvables prefixed by @ are file names */
       if (**solvable == '@')
-        add_solvables_from_file_to_pile (*solvable + 1, pool, pile, error);
+        {
+          if (!add_solvables_from_file_to_pile (*solvable + 1, pool, pile, error))
+            return NULL;
+        }
       else
         add_solvable_to_pile (*solvable, pool, pile);
-
-      if (*error)
-        return NULL;
     }
 
   return g_steal_pointer (&pile);
