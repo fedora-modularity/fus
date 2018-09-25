@@ -848,7 +848,7 @@ add_solvables_from_file_to_pile (const char  *filename,
                                  Queue       *pile,
                                  GError     **error)
 {
-  GIOChannel *ch = g_io_channel_new_file (filename, "r", error);
+  g_autoptr(GIOChannel) ch = g_io_channel_new_file (filename, "r", error);
   if (ch == NULL)
     {
       g_prefix_error (error, "%s: ", filename);
@@ -877,20 +877,16 @@ add_solvables_from_file_to_pile (const char  *filename,
       return FALSE;
     }
 
-  g_io_channel_unref (ch);
-
   return TRUE;
 }
 
-static Queue *
-pile_from_solvables (Pool    *pool,
-                     GStrv    solvables,
-                     GError **error)
+static gboolean
+add_solvables_to_pile (Pool    *pool,
+                       Queue   *pile,
+                       GStrv    solvables,
+                       GError **error)
 {
-  g_return_val_if_fail (!error || !*error, NULL);
-
-  g_autoptr(Queue) pile = g_malloc0 (sizeof (Queue));
-  queue_init (pile);
+  g_return_val_if_fail (!error || !*error, FALSE);
 
   for (GStrv solvable = solvables; solvable && *solvable; solvable++)
     {
@@ -898,13 +894,13 @@ pile_from_solvables (Pool    *pool,
       if (**solvable == '@')
         {
           if (!add_solvables_from_file_to_pile (*solvable + 1, pool, pile, error))
-            return NULL;
+            return FALSE;
         }
       else
         add_solvable_to_pile (*solvable, pool, pile);
     }
 
-  return g_steal_pointer (&pile);
+  return TRUE;
 }
 
 int
@@ -1049,10 +1045,11 @@ main (int   argc,
   pool->considered = &considered;
   map_init_clone (pool->considered, &excludes);
 
-  g_autoptr(Queue) pile = pile_from_solvables (pool, solvables, &err);
-  if (!pile)
+  g_auto(Queue) pile;
+  queue_init (&pile);
+  if (!add_solvables_to_pile (pool, &pile, solvables, &err))
     exiterr (err);
-  if (!pile->count)
+  if (!pile.count)
     {
       g_set_error_literal (&err,
                            G_OPTION_ERROR, G_OPTION_ERROR_FAILED,
@@ -1060,14 +1057,14 @@ main (int   argc,
       exiterr (err);
     }
 
-  gboolean solv_failed = resolve_all_solvables (pool, pile, &excludes);
+  gboolean solv_failed = resolve_all_solvables (pool, &pile, &excludes);
   if (solv_failed)
     g_warning ("Can't resolve all solvables");
 
   /* Output resolved packages */
-  for (int i = 0; i < pile->count; i++)
+  for (int i = 0; i < pile.count; i++)
     {
-      Id p = pile->elements[i];
+      Id p = pile.elements[i];
       Solvable *s = pool_id2solvable (pool, p);
       if (g_hash_table_contains (lookaside_repos, s->repo))
         continue;
