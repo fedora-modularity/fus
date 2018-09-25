@@ -43,10 +43,10 @@ parse_module_requires (Pool       *pool,
   while (g_hash_table_iter_next (&iter, &key, &value))
     {
       const char *n = key;
-      GStrv ss = modulemd_simpleset_dup (value);
+      g_auto(GStrv) reqv = modulemd_simpleset_dup (value);
 
       Id req_neg = 0, req_pos = 0;
-      for (; *ss; ss++)
+      for (GStrv ss = reqv; *ss; ss++)
         {
           const char *s = *ss;
 
@@ -132,12 +132,12 @@ add_module_rpm_artifacts (Pool           *pool,
                           ModulemdModule *module,
                           Id              sdep)
 {
-  GStrv rpm_artifacts = modulemd_simpleset_dup (modulemd_module_peek_rpm_artifacts (module));
+  g_auto(GStrv) rpm_artifacts = modulemd_simpleset_dup (modulemd_module_peek_rpm_artifacts (module));
   g_auto(Queue) sel;
   queue_init (&sel);
-  for (; *rpm_artifacts; rpm_artifacts++)
+  for (GStrv artifact = rpm_artifacts; *artifact; artifact++)
     {
-      const char *nevra = *rpm_artifacts;
+      const char *nevra = *artifact;
 
       const char *evr_delimiter = NULL;
       const char *rel_delimiter = NULL;
@@ -422,7 +422,7 @@ solve (Pool *pool, Queue *jobs)
       pbcnt = solver_problem_count (solver);
       for (int problem = 1; problem <= pbcnt; problem++)
         {
-          Queue rids, rinfo;
+          g_auto(Queue) rids, rinfo;
           queue_init (&rids);
           queue_init (&rinfo);
 
