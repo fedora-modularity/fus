@@ -1,0 +1,39 @@
+---
+document: modulemd
+version: 2
+data:
+  name: minput
+  stream: master
+  version: 20180904161631
+  context: cafebabe
+  arch: x86_64
+  dependencies:
+    - buildrequires:
+        platform: [f29]
+        mfoo: [master]
+      requires:
+        platform: [f29]
+        mfoo: [master]
+  artifacts:
+    rpms:
+      - input-package-0:1.0-1.x86_64
+...
+---
+document: modulemd
+version: 2
+data:
+  name: mfoo
+  stream: master
+  version: 20180904161631
+  context: deadbeef
+  arch: x86_64
+  dependencies:
+    - buildrequires:
+        platform: [f29]
+      requires:
+        platform: [f29]
+  artifacts:
+    rpms:
+      - foo-0:1.0-1.x86_64
+...
+

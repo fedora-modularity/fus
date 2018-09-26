@@ -1,0 +1,11 @@
+=Ver: 2.0
+
+# Belongs to module mfoo:master:20180904161631:deadbeef.x86_64
+=Pkg: foo 1.0 1 x86_64
+
+# Bare RPM not belonging to any module
+=Pkg: foo 2.0 1 x86_64
+
+# Belongs to module minput:master:20180904161631:cafebabe.x86_64
+=Pkg: input-package 1.0 1 x86_64
+=Req: foo
