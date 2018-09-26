@@ -17,7 +17,6 @@
 #include <solv/solv_xfopen.h>
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(Pool, pool_free);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(Queue, queue_free);
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(Solver, solver_free);
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(Transaction, transaction_free);
 G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(Queue, queue_free);
