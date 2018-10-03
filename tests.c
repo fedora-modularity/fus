@@ -123,6 +123,7 @@ int main (int argc, char **argv)
   ADD_TEST ("/require/negative", "negative");
   ADD_TEST ("/require/positive", "positive");
   ADD_TEST ("/require/empty", "empty");
+  ADD_TEST ("/require/alternatives", "alternatives");
 
   return g_test_run ();
 }

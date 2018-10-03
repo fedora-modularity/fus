@@ -1,0 +1,145 @@
+---
+document: modulemd
+version: 2
+data:
+  name: C
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - C-0:1-1.noarch
+      - CX-0:1-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: C
+  stream: shiny
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - C-0:2-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: C
+  stream: glossy
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - C-0:3-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: C
+  stream: lustrous
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - C-0:4-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: D
+  stream: stable
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - D-0:1-1.noarch
+  dependencies:
+    - requires:
+        C: []
+...
+---
+document: modulemd
+version: 2
+data:
+  name: D
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - D-0:2-1.noarch
+  dependencies:
+    - requires:
+        C: [glossy]
+...
+---
+document: modulemd
+version: 2
+data:
+  name: E
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - E-0:1-1.noarch
+  dependencies:
+    - requires:
+        D: []
+...
+---
+document: modulemd
+version: 2
+data:
+  name: F
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: noarch
+  artifacts:
+    rpms:
+      - F-0:1-1.noarch
+  dependencies:
+    - requires:
+        E: []
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+  module: C
+  stream: master
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+  module: D
+  stream: stable
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+  module: E
+  stream: master
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+  module: F
+  stream: master
+...
