@@ -362,10 +362,8 @@ filelist_loadcb (Pool     *pool,
   Repo *repo = data->repo;
 
   type = repodata_lookup_str (data, SOLVID_META, REPOSITORY_REPOMD_TYPE);
-  if (strcmp (type, "filelists"))
-    {
-      return 0;
-    }
+  if (g_strcmp0 (type, "filelists") != 0)
+    return 0;
 
   fpath = repodata_lookup_str (data, SOLVID_META, REPOSITORY_REPOMD_LOCATION);
 
