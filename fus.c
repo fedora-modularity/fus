@@ -745,7 +745,7 @@ _install_transaction (Pool         *pool,
       queue_pushunique (pile, p);
       const gchar *solvable = pool_solvid2str (pool, p);
       g_debug ("%*c - %s", indent, ' ', solvable);
-      /* Non-modules are immediately resolved as resolved, since for RPM the
+      /* Non-modules are immediately marked as resolved, since for RPM the
        * result would not change if done again. However for modules we need to
        * make sure we look at all combinations. */
       if (!g_str_has_prefix (solvable, "module:"))
@@ -763,7 +763,7 @@ _install_transaction (Pool         *pool,
  * and mark them as not considered.
  */
 static void
-mask_bare_rpms(Pool *pool)
+mask_bare_rpms (Pool *pool)
 {
   /* Get array of all existing modular packages. */
   Id *modular_packages = pool_whatprovides_ptr (pool, pool_str2id (pool, MODPKG_PROV, 1));
@@ -773,22 +773,17 @@ mask_bare_rpms(Pool *pool)
   g_auto(Queue) available_modular_pkgs;
   queue_init(&available_modular_pkgs);
   for (Id *pp = modular_packages; *pp; pp++)
-    {
-      if (map_tst (pool->considered, *pp))
-        {
-          queue_push (&available_modular_pkgs, *pp);
-        }
-    }
+    if (map_tst (pool->considered, *pp))
+      queue_push (&available_modular_pkgs, *pp);
 
   for (int i = 0; i < available_modular_pkgs.count; i++)
     {
       Id pp = available_modular_pkgs.elements[i];
       Solvable *modpkg = pool_id2solvable (pool, pp);
-      const gchar *name = pool_id2str (pool, modpkg->name);
 
       g_auto(Queue) sel;
       queue_init (&sel);
-      selection_make (pool, &sel, name, SELECTION_NAME);
+      selection_make (pool, &sel, pool_id2str (pool, modpkg->name), SELECTION_NAME);
       if (!sel.count)
         {
           /* This should never happen, at least one package
@@ -803,9 +798,7 @@ mask_bare_rpms(Pool *pool)
         {
           Id p = q.elements[j];
           if (!queue_contains (&available_modular_pkgs, p))
-            {
-              map_clr (pool->considered, p);
-            }
+            map_clr (pool->considered, p);
         }
     }
 }
@@ -823,7 +816,6 @@ mask_bare_rpms(Pool *pool)
 static void
 disable_module (Pool *pool, Id module)
 {
-  // g_debug ("Disabling %s", pool_solvid2str(pool, module));
   map_clr (pool->considered, module);
 
   Solvable *s = pool_id2solvable (pool, module);
@@ -835,7 +827,6 @@ disable_module (Pool *pool, Id module)
   for (int k = 0; k < q.count; k++)
     {
       Id p = q.elements[k];
-      //g_debug ("  - %s", pool_solvid2str (pool, p));
       map_clr (pool->considered, p);
     }
 }
@@ -881,7 +872,7 @@ resolve_all_solvables (Pool  *pool,
           if (!g_str_has_prefix (pool_id2str (pool, s->name), "module:"))
             {
               g_debug ("Installing %s:", pool_solvid2str (pool, p));
-              mask_bare_rpms(pool);
+              mask_bare_rpms (pool);
 
               if (!_install_transaction (pool, pile, &job, &tested, 2))
                 solv_failed = TRUE;
@@ -915,12 +906,8 @@ resolve_all_solvables (Pool  *pool,
                   /* Disable all non-default unrelated modules */
                   Id *pp = pool_whatprovides_ptr (pool, ndef_modules_rel);
                   for (; *pp; pp++)
-                    {
-                      if (!queue_contains (&t, *pp))
-                      {
-                        disable_module (pool, *pp);
-                      }
-                    }
+                    if (!queue_contains (&t, *pp))
+                      disable_module (pool, *pp);
 
                   mask_bare_rpms(pool);
 
