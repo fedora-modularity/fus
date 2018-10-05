@@ -872,6 +872,12 @@ resolve_all_solvables (Pool  *pool,
           if (!g_str_has_prefix (pool_id2str (pool, s->name), "module:"))
             {
               g_debug ("Installing %s:", pool_solvid2str (pool, p));
+
+              /* Disable all non-default unrelated modules */
+              Id *pp = pool_whatprovides_ptr (pool, ndef_modules_rel);
+              for (; *pp; pp++)
+                disable_module (pool, *pp);
+
               mask_bare_rpms (pool);
 
               if (!_install_transaction (pool, pile, &job, &tested, 2))
