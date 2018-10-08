@@ -1,0 +1,7 @@
+=Ver: 2.0
+
+=Pkg: foo 1 1 noarch
+=Req: bar
+
+=Pkg: bar 1 1 noarch
+=Pkg: bar 2 1 noarch
