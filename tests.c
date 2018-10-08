@@ -112,17 +112,17 @@ test_setup (TestData *tdata, gconstpointer data)
 
   /* Read local test repositories */
   tdata->repos = g_ptr_array_new_full (4, g_free);
-  g_autofree char *lookaside_path = g_build_filename (testpath, "lookaside.repo", NULL);
-  if (g_file_test (lookaside_path, G_FILE_TEST_IS_REGULAR))
-    {
-      g_ptr_array_add (tdata->repos, g_strdup_printf ("repo-0,lookaside,%s", lookaside_path));
-      g_debug (" lookaside: %s", lookaside_path);
-    }
   g_autofree char *repo_path = g_build_filename (testpath, "packages.repo", NULL);
   if (g_file_test (repo_path, G_FILE_TEST_IS_REGULAR))
     {
       g_ptr_array_add (tdata->repos, g_strdup_printf ("repo,repo,%s", repo_path));
       g_debug (" repo: %s", repo_path);
+    }
+  g_autofree char *lookaside_path = g_build_filename (testpath, "lookaside.repo", NULL);
+  if (g_file_test (lookaside_path, G_FILE_TEST_IS_REGULAR))
+    {
+      g_ptr_array_add (tdata->repos, g_strdup_printf ("repo-0,lookaside,%s", lookaside_path));
+      g_debug (" lookaside: %s", lookaside_path);
     }
   g_autofree char *yaml_path = g_build_filename (testpath, "modules.yaml", NULL);
   if (g_file_test (yaml_path, G_FILE_TEST_IS_REGULAR))
@@ -152,6 +152,8 @@ int main (int argc, char **argv)
 
   ADD_TEST ("/ursine/default-stream-dep", "default-stream");
   ADD_TEST ("/ursine/prefer-over-non-default-stream", "non-default-stream");
+
+  ADD_TEST ("/lookaside/same-repo", "input-as-lookaside");
 
   return g_test_run ();
 }
