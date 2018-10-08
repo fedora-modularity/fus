@@ -985,7 +985,10 @@ fus_depsolve (const char *arch,
         r = create_repo (pool, strv[0], strv[2]);
 #endif
       if (g_strcmp0 (strv[1], "lookaside") == 0)
-        g_hash_table_add (lookaside_repos, r);
+        {
+          g_hash_table_add (lookaside_repos, r);
+          r->subpriority = 100;
+        }
     }
 
   pool_addfileprovides (pool);
