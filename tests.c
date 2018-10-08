@@ -151,6 +151,7 @@ int main (int argc, char **argv)
   g_test_add_func ("/fail/invalid-repo", test_invalid_repo);
 
   ADD_TEST ("/ursine/default-stream-dep", "default-stream");
+  ADD_TEST ("/ursine/prefer-over-non-default-stream", "non-default-stream");
 
   return g_test_run ();
 }
