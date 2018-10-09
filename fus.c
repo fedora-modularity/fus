@@ -1037,3 +1037,79 @@ fus_depsolve (const char *arch,
 
   return output;
 }
+
+/*
+ * Run the depsolving algorithm on a pre-populated pool.
+ *
+ * @pool: the pool with repos already loaded
+ * @lookaside_repos: which repos are to be considered lookaside (can be empty)
+ * @exclude_packages: packages to exclude (can be empty)
+ * @solvables: array of solvables to resolve
+ * @error: pointer to GError for error descriptions
+ *
+ * returns: a NULL-terminated array of solved dependencies
+ */
+GPtrArray *
+fus_depsolve_from_pool (Pool       *pool,
+                        GHashTable *lookaside_repos,
+                        const GStrv exclude_packages,
+                        const GStrv solvables,
+                        GError    **error)
+{
+  g_assert (pool != NULL);
+  g_assert (pool->nrepos > 0);
+
+  if (g_strv_length (solvables) == 0)
+    {
+      g_set_error_literal (error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+                           "At least one solvable should be specified");
+      return NULL;
+    }
+
+  /* Run this just in case */
+  pool_addfileprovides (pool);
+  pool_createwhatprovides (pool);
+
+  /* Precompute map of modular packages */
+  g_auto(Map) modular_pkgs = precompute_modular_packages (pool);
+
+  /* Find out excluded packages */
+  g_auto(Map) excludes = apply_excludes (pool, exclude_packages, lookaside_repos, &modular_pkgs);
+
+  g_auto(Map) considered;
+  pool->considered = &considered;
+  map_init_clone (pool->considered, &excludes);
+
+  g_auto(Queue) pile;
+  queue_init (&pile);
+  if (!add_solvables_to_pile (pool, &pile, solvables, error))
+    return NULL;
+
+  if (!pile.count)
+    {
+      g_set_error_literal (error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED,
+                           "No solvables matched");
+      return NULL;
+    }
+
+  gboolean solv_failed = resolve_all_solvables (pool, &pile, &excludes);
+  if (solv_failed)
+    g_warning ("Can't resolve all solvables");
+
+  /* Output resolved packages */
+  GPtrArray *output = g_ptr_array_new_full (pile.count, g_free);
+  for (int i = 0; i < pile.count; i++)
+    {
+      Id p = pile.elements[i];
+      Solvable *s = pool_id2solvable (pool, p);
+      if (g_hash_table_contains (lookaside_repos, s->repo))
+        continue;
+      char *name = g_strdup_printf ("%s%s@%s",
+                                    map_tst (&modular_pkgs, p) ? "*" : "",
+                                    pool_solvable2str (pool, s), s->repo->name);
+      g_ptr_array_add (output, name);
+    }
+  g_ptr_array_add (output, NULL);
+
+  return output;
+}
