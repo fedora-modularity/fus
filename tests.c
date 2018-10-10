@@ -125,5 +125,7 @@ int main (int argc, char **argv)
   ADD_TEST ("/require/empty", "empty");
   ADD_TEST ("/require/alternatives", "alternatives");
 
+  ADD_TEST ("/broken/module", "broken-module");
+
   return g_test_run ();
 }
