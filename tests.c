@@ -18,6 +18,28 @@ typedef struct _test_data {
 extern GPtrArray *fus_depsolve(const char *, const char *, const GStrv, const GStrv, const GStrv, GError **);
 
 static void
+test_invalid_repo (void)
+{
+  gchar *repos[] = {"repo,repo,invalid/packages.repo"};
+  gchar *solvables[] = {"invalid"};
+
+  if (g_test_subprocess())
+    {
+      g_autoptr(GError) error = NULL;
+      g_autoptr(GPtrArray) result = NULL;
+      result = fus_depsolve (ARCH, PLATFORM, NULL, repos, solvables, &error);
+      g_assert_error (error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED);
+      g_assert (result == NULL);
+      g_printerr (error->message);
+      return;
+    }
+
+  g_test_trap_subprocess (NULL, 0, 0);
+  g_test_trap_assert_passed ();
+  g_test_trap_assert_stderr ("*Could not open invalid/packages.repo*");
+}
+
+static void
 test_run (TestData *td, gconstpointer data)
 {
   g_autoptr(GError) error = NULL;
@@ -124,6 +146,8 @@ int main (int argc, char **argv)
   ADD_TEST ("/require/positive", "positive");
   ADD_TEST ("/require/empty", "empty");
   ADD_TEST ("/require/alternatives", "alternatives");
+
+  g_test_add_func ("/fail/invalid-repo", test_invalid_repo);
 
   return g_test_run ();
 }
