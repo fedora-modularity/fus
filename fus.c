@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdint.h>
 #include <glib.h>
 #include <gio/gio.h>
@@ -323,14 +324,24 @@ repo_add_modulemd (Repo       *repo,
 
 #ifdef FUS_TESTING
 static Repo *
-create_test_repo (Pool       *pool,
-                  const char *name,
-                  const char *type,
-                  const char *path)
+create_test_repo (Pool        *pool,
+                  const char  *name,
+                  const char  *type,
+                  const char  *path,
+                  GError     **error)
 {
+  FILE *fp = fopen (path, "r");
+  if (!fp)
+    {
+      g_set_error (error,
+                   G_OPTION_ERROR, G_OPTION_ERROR_FAILED,
+                   "Could not open %s: %s",
+                   path, g_strerror (errno));
+      return NULL;
+    }
+
   Repo *repo = repo_create (pool, name);
 
-  FILE *fp = fopen (path, "r");
   /* Open a file with module metadata and load the content to the repo */
   if (g_strcmp0 (type, "modular") == 0)
     repo_add_modulemd (repo, fp, NULL, 0);
@@ -392,8 +403,15 @@ filelist_loadcb (Pool     *pool,
     return 0;
 
   fpath = repodata_lookup_str (data, SOLVID_META, REPOSITORY_REPOMD_LOCATION);
+  if (!fpath)
+    return 0;
 
   fp = solv_xfopen (fpath, 0);
+  if (!fp)
+    {
+      g_warning ("Could not open filelists %s: %s", fpath, g_strerror (errno));
+      return 0;
+    }
   repo_add_rpmmd (repo, fp, NULL, REPO_USE_LOADING | REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
   fclose (fp);
 
@@ -401,18 +419,27 @@ filelist_loadcb (Pool     *pool,
 }
 
 static Repo *
-create_repo (Pool       *pool,
-             const char *name,
-             const char *path)
+create_repo (Pool        *pool,
+             const char  *name,
+             const char  *path,
+             GError     **error)
 {
   FILE *fp;
   Id chksumtype;
   const unsigned char *chksum;
   const char *fname;
 
-  Repo *repo = repo_create (pool, name);
-
   fp = solv_xfopen (pool_tmpjoin (pool, path, "/", "repodata/repomd.xml"), "r");
+  if (!fp)
+    {
+      g_set_error (error,
+                   G_OPTION_ERROR, G_OPTION_ERROR_FAILED,
+                   "Could not open repomd.xml for %s: %s",
+                   path, g_strerror (errno));
+      return NULL;
+    }
+
+  Repo *repo = repo_create (pool, name);
   repo_add_repomdxml (repo, fp, 0);
   fclose (fp);
 
@@ -420,8 +447,11 @@ create_repo (Pool       *pool,
   if (fname)
     {
       fp = solv_xfopen (pool_tmpjoin (pool, path, "/", fname), 0);
-      repo_add_rpmmd (repo, fp, NULL, 0);
-      fclose (fp);
+      if (fp != NULL)
+        {
+          repo_add_rpmmd (repo, fp, NULL, 0);
+          fclose (fp);
+        }
     }
 
   fname = repomd_find (repo, "group_gz", &chksum, &chksumtype);
@@ -430,8 +460,11 @@ create_repo (Pool       *pool,
   if (fname)
     {
       fp = solv_xfopen (pool_tmpjoin (pool, path, "/", fname), 0);
-      repo_add_comps (repo, fp, 0);
-      fclose (fp);
+      if (fp != NULL)
+        {
+          repo_add_comps (repo, fp, 0);
+          fclose (fp);
+        }
     }
 
   fname = repomd_find (repo, "filelists", &chksum, &chksumtype);
@@ -456,8 +489,11 @@ create_repo (Pool       *pool,
   if (fname)
     {
       fp = solv_xfopen (pool_tmpjoin (pool, path, "/", fname), 0);
-      repo_add_modulemd (repo, fp, NULL, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
-      fclose (fp);
+      if (fp != NULL)
+        {
+          repo_add_modulemd (repo, fp, NULL, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
+          fclose (fp);
+        }
     }
 
   pool_createwhatprovides (pool);
@@ -980,10 +1016,13 @@ fus_depsolve (const char *arch,
       g_auto(GStrv) strv = g_strsplit (*repo, ",", 3);
       Repo *r = NULL;
 #ifdef FUS_TESTING
-        r = create_test_repo (pool, strv[0], strv[1], strv[2]);
+      r = create_test_repo (pool, strv[0], strv[1], strv[2], error);
 #else
-        r = create_repo (pool, strv[0], strv[2]);
+      r = create_repo (pool, strv[0], strv[2], error);
 #endif
+      if (!r)
+        return NULL;
+
       if (g_strcmp0 (strv[1], "lookaside") == 0)
         {
           g_hash_table_add (lookaside_repos, r);
