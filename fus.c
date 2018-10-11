@@ -911,13 +911,16 @@ resolve_all_solvables (Pool  *pool,
 static void
 add_solvable_to_pile (const char *solvable,
                       Pool       *pool,
-                      Queue      *pile)
+                      Queue      *pile,
+                      Queue      *exclude)
 {
   static int sel_flags = SELECTION_NAME | SELECTION_PROVIDES | SELECTION_GLOB |
                          SELECTION_CANON | SELECTION_DOTARCH;
   g_auto(Queue) sel;
   queue_init (&sel);
   selection_make (pool, &sel, solvable, sel_flags);
+  selection_subtract (pool, &sel, exclude);
+
   g_auto(Queue) q;
   queue_init (&q);
   selection_solvables (pool, &sel, &q);
@@ -935,6 +938,7 @@ static gboolean
 add_solvables_from_file_to_pile (const char *filename,
                                  Pool       *pool,
                                  Queue      *pile,
+                                 Queue      *exclude,
                                  GError    **error)
 {
   g_autoptr(GIOChannel) ch = g_io_channel_new_file (filename, "r", error);
@@ -956,7 +960,7 @@ add_solvables_from_file_to_pile (const char *filename,
 
       content[tpos] = '\0';
       if (*content)
-        add_solvable_to_pile (content, pool, pile);
+        add_solvable_to_pile (content, pool, pile, exclude);
     }
   while (ret == G_IO_STATUS_NORMAL);
 
@@ -972,6 +976,7 @@ add_solvables_from_file_to_pile (const char *filename,
 static gboolean
 add_solvables_to_pile (Pool    *pool,
                        Queue   *pile,
+                       Queue   *exclude,
                        GStrv    solvables,
                        GError **error)
 {
@@ -982,14 +987,47 @@ add_solvables_to_pile (Pool    *pool,
       /* solvables prefixed by @ are file names */
       if (**solvable == '@')
         {
-          if (!add_solvables_from_file_to_pile (*solvable + 1, pool, pile, error))
+          if (!add_solvables_from_file_to_pile (*solvable + 1, pool, pile, exclude, error))
             return FALSE;
         }
       else
-        add_solvable_to_pile (*solvable, pool, pile);
+        add_solvable_to_pile (*solvable, pool, pile, exclude);
     }
 
   return TRUE;
+}
+
+static Queue
+mask_non_default_module_pkgs (Pool *pool)
+{
+  Queue selection;
+  queue_init(&selection);
+
+  Id ndef_modules_rel = pool_rel2id (pool,
+                                     pool_str2id (pool, "module()", 1),
+                                     pool_str2id (pool, "module-default()", 1),
+                                     REL_WITHOUT,
+                                     1);
+  Id *pp = pool_whatprovides_ptr (pool, ndef_modules_rel);
+  for (; *pp; pp++)
+    {
+      Solvable *s = pool_id2solvable (pool, *pp);
+      g_auto(Queue) q;
+      queue_init (&q);
+      Id dep = pool_rel2id (pool, s->name, s->arch, REL_ARCH, 1);
+      pool_whatcontainsdep (pool, SOLVABLE_REQUIRES, dep, &q, 0);
+
+      for (int i = 0; i < q.count; i++)
+        {
+          static int sel_flags = SELECTION_CANON;
+          g_auto(Queue) remove;
+          queue_init (&remove);
+          selection_make (pool, &remove, pool_solvid2str (pool, q.elements[i]), sel_flags);
+          selection_add (pool, &selection, &remove);
+        }
+    }
+
+  return selection;
 }
 
 GPtrArray *
@@ -1044,13 +1082,16 @@ fus_depsolve (const char *arch,
   /* Find out excluded packages */
   g_auto(Map) excludes = apply_excludes (pool, exclude_packages, lookaside_repos, &modular_pkgs);
 
+  /* Find packages from non-default modules */
+  g_auto(Queue) non_def_pkgs = mask_non_default_module_pkgs (pool);
+
   g_auto(Map) considered;
   pool->considered = &considered;
   map_init_clone (pool->considered, &excludes);
 
   g_auto(Queue) pile;
   queue_init (&pile);
-  if (!add_solvables_to_pile (pool, &pile, solvables, error))
+  if (!add_solvables_to_pile (pool, &pile, &non_def_pkgs, solvables, error))
     return NULL;
   if (!pile.count)
     {
