@@ -147,6 +147,7 @@ int main (int argc, char **argv)
   ADD_TEST ("/require/empty", "empty");
   ADD_TEST ("/require/alternatives", "alternatives");
   ADD_TEST ("/module/empty", "empty-module");
+  ADD_TEST ("/solvable-selection/pull-bare", "pull-bare");
 
   g_test_add_func ("/fail/invalid-repo", test_invalid_repo);
 
