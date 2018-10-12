@@ -126,6 +126,7 @@ int main (int argc, char **argv)
   ADD_TEST ("/require/alternatives", "alternatives");
 
   ADD_TEST ("/solvable-selection/pull-bare", "pull-bare");
+  ADD_TEST ("/solvable-selection/pull-from-default-stream", "pull-default-module");
 
   return g_test_run ();
 }
