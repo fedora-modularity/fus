@@ -989,6 +989,51 @@ mask_non_default_module_pkgs (Pool *pool)
   return selection;
 }
 
+/*
+ * Mask bare rpms if any of the default modules provides them (even if older)
+ */
+static Queue
+mask_solvable_bare_rpms (Pool *pool)
+{
+  Queue selection;
+  queue_init (&selection);
+
+  Id def_modules_rel = pool_rel2id (pool,
+                                    pool_str2id (pool, "module()", 1),
+                                    pool_str2id (pool, "module-default()", 1),
+                                    REL_WITH,
+                                    1);
+
+  Id *pp = pool_whatprovides_ptr (pool, def_modules_rel);
+  for (; *pp; pp++)
+    {
+      Solvable *s = pool_id2solvable (pool, *pp);
+      g_auto(Queue) q;
+      queue_init (&q);
+      Id dep = pool_rel2id (pool, s->name, s->arch, REL_ARCH, 1);
+      pool_whatcontainsdep (pool, SOLVABLE_REQUIRES, dep, &q, 0);
+
+      for (int i = 0; i < q.count; i++)
+        {
+          Solvable *modpkg = pool_id2solvable (pool, q.elements[i]);
+          Id bare_rpms_rel = pool_rel2id (pool,
+                                          modpkg->name,
+                                          pool_str2id (pool, MODPKG_PROV, 1),
+                                          REL_WITHOUT,
+                                          1);
+
+          Id *mp = pool_whatprovides_ptr (pool, bare_rpms_rel);
+          for (; *mp; mp++)
+            selection_make (pool,
+                            &selection,
+                            pool_solvid2str (pool, *mp),
+                            SELECTION_CANON | SELECTION_ADD);
+        }
+    }
+
+  return selection;
+}
+
 GPtrArray *
 fus_depsolve (const char *arch,
               const char *platform,
@@ -1039,7 +1084,11 @@ fus_depsolve (const char *arch,
   g_auto(Map) excludes = apply_excludes (pool, exclude_packages, lookaside_repos, &modular_pkgs);
 
   /* Find packages from non-default modules */
-  g_auto(Queue) non_def_pkgs = mask_non_default_module_pkgs (pool);
+  g_auto(Queue) disconsider = mask_non_default_module_pkgs (pool);
+
+  /* Find bare rpms masked by default modules */
+  g_auto(Queue) bare_rpms = mask_solvable_bare_rpms (pool);
+  selection_add (pool, &disconsider, &bare_rpms);
 
   g_auto(Map) considered;
   pool->considered = &considered;
@@ -1047,7 +1096,7 @@ fus_depsolve (const char *arch,
 
   g_auto(Queue) pile;
   queue_init (&pile);
-  if (!add_solvables_to_pile (pool, &pile, &non_def_pkgs, solvables, error))
+  if (!add_solvables_to_pile (pool, &pile, &disconsider, solvables, error))
     return NULL;
   if (!pile.count)
     {
