@@ -18,6 +18,36 @@ typedef struct _test_data {
 extern GPtrArray *fus_depsolve(const char *, const char *, const GStrv, const GStrv, const GStrv, GError **);
 
 static void
+test_fail_invalid_solvable (void)
+{
+  GStrv repos = NULL;
+  gchar *solvables[] = {"invalid", NULL};
+
+  g_autoptr(GError) error = NULL;
+  g_autoptr(GPtrArray) result = NULL;
+  g_test_expect_message (G_LOG_DOMAIN, G_LOG_LEVEL_WARNING,
+                         "*Nothing matches 'invalid'*");
+  result = fus_depsolve (ARCH, PLATFORM, NULL, repos, solvables, &error);
+  g_assert (result == NULL);
+  g_assert_cmpstr (error->message, ==, "No solvables matched");
+  g_test_assert_expected_messages ();
+}
+
+static void
+test_fail_no_solvables (void)
+{
+  GStrv repos = NULL;
+  GStrv solvables = NULL;
+
+  g_autoptr(GError) error = NULL;
+  g_autoptr(GPtrArray) result = NULL;
+  result = fus_depsolve (ARCH, PLATFORM, NULL, repos, solvables, &error);
+  g_assert_error (error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED);
+  g_assert (result == NULL);
+  g_assert_cmpstr (error->message, ==, "No solvables matched");
+}
+
+static void
 test_invalid_repo (void)
 {
   gchar *repos[] = {"repo,repo,invalid/packages.repo"};
@@ -151,6 +181,8 @@ int main (int argc, char **argv)
   ADD_TEST ("/broken/module", "broken-module");
 
   g_test_add_func ("/fail/invalid-repo", test_invalid_repo);
+  g_test_add_func ("/fail/no-solvables", test_fail_no_solvables);
+  g_test_add_func ("/fail/invalid-solvable", test_fail_invalid_solvable);
 
   ADD_TEST ("/ursine/default-stream-dep", "default-stream");
   ADD_TEST ("/ursine/prefer-over-non-default-stream", "non-default-stream");
