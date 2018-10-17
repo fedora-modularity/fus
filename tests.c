@@ -218,7 +218,6 @@ int main (int argc, char **argv)
   ADD_TEST ("/require/empty", "empty");
   ADD_TEST ("/require/alternatives", "alternatives");
   ADD_TEST ("/module/empty", "empty-module");
-  ADD_TEST ("/broken/module", "broken-module");
 
   g_test_add_func ("/fail/invalid-repo", test_invalid_repo);
   g_test_add_func ("/fail/no-solvables", test_fail_no_solvables);
@@ -230,6 +229,7 @@ int main (int argc, char **argv)
   ADD_TEST ("/lookaside/same-repo", "input-as-lookaside");
 
   ADD_SOLV_FAIL_TEST ("/fail/ursine/broken", "ursine-broken");
+  ADD_SOLV_FAIL_TEST ("/fail/module/broken", "module-broken");
 
   return g_test_run ();
 }
