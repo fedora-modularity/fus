@@ -1,0 +1,11 @@
+=Ver: 2.0
+
+=Pkg: foo 1 1 noarch
+=Req: valid
+=Req: broken
+
+=Pkg: broken 1 1 noarch
+=Req: /usr/share/file
+=Req: valid
+
+=Pkg: valid 1 1 noarch

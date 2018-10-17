@@ -8,6 +8,9 @@
 #define ADD_TEST(name, dir) \
   g_test_add(name, TestData, dir, test_setup, test_run, test_teardown)
 
+#define ADD_SOLV_FAIL_TEST(name, dir) \
+  g_test_add(name, TestData, dir, test_setup, test_broken_dep, test_teardown)
+
 typedef struct _test_data {
   GPtrArray *repos;
   GStrv solvables;
@@ -16,6 +19,43 @@ typedef struct _test_data {
 } TestData;
 
 extern GPtrArray *fus_depsolve(const char *, const char *, const GStrv, const GStrv, const GStrv, GError **);
+
+static void
+test_broken_dep (TestData *td, gconstpointer data)
+{
+  GStrv repos = (char **)td->repos->pdata;
+  const gchar *dir = data;
+
+  if (g_test_subprocess ())
+    {
+      g_autoptr(GError) error = NULL;
+      g_autoptr(GPtrArray) result = NULL;
+      g_test_expect_message (G_LOG_DOMAIN, G_LOG_LEVEL_WARNING,
+                             "*Can't resolve all solvables*");
+      result = fus_depsolve (ARCH, PLATFORM, NULL, repos, td->solvables, &error);
+      g_assert (result != NULL);
+      g_assert_no_error (error);
+      g_autofree char *strres = g_strjoinv ("\n", (char **)result->pdata);
+      g_autofree char *diff = testcase_resultdiff (td->expected, strres);
+      g_assert_cmpstr (diff, ==, NULL);
+      g_test_assert_expected_messages ();
+      return;
+    }
+
+  g_test_trap_subprocess (NULL, 0, 0);
+  g_test_trap_assert_passed ();
+
+  const char *probfile = g_test_get_filename (G_TEST_DIST, dir, "problems", NULL);
+  if (g_file_test (probfile, G_FILE_TEST_IS_REGULAR))
+    {
+      g_autofree char *content = NULL;
+      g_autoptr(GError) error = NULL;
+      g_file_get_contents (probfile, &content, NULL, &error);
+      g_assert_no_error (error);
+      g_assert (content != NULL);
+      g_test_trap_assert_stdout (content);
+    }
+}
 
 static void
 test_fail_invalid_solvable (void)
@@ -188,6 +228,8 @@ int main (int argc, char **argv)
   ADD_TEST ("/ursine/prefer-over-non-default-stream", "non-default-stream");
 
   ADD_TEST ("/lookaside/same-repo", "input-as-lookaside");
+
+  ADD_SOLV_FAIL_TEST ("/fail/ursine/broken", "ursine-broken");
 
   return g_test_run ();
 }

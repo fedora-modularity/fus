@@ -1,0 +1,4 @@
+*Problem 1 / 1:
+  - package foo-1-1.noarch requires broken, but none of the providers can be installed
+  - conflicting requests
+  - nothing provides /usr/share/file needed by broken-1-1.noarch*
