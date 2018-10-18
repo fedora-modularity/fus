@@ -230,6 +230,7 @@ int main (int argc, char **argv)
 
   ADD_SOLV_FAIL_TEST ("/fail/ursine/broken", "ursine-broken");
   ADD_SOLV_FAIL_TEST ("/fail/module/broken", "module-broken");
+  ADD_SOLV_FAIL_TEST ("/fail/moddep/broken", "moddep-broken");
 
   return g_test_run ();
 }
