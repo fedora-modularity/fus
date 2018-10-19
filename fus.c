@@ -832,6 +832,11 @@ resolve_all_solvables (Pool  *pool,
                       Id p = t.elements[j];
                       Solvable *s = pool_id2solvable (pool, p);
 
+                      /* Make sure to include the module into the pile even if
+                       * it doesn't contain any components (e.g, an empty module)
+                       */
+                      queue_pushunique (pile, p);
+
                       g_auto(Queue) q;
                       queue_init (&q);
                       Id dep = pool_rel2id (pool, s->name, s->arch, REL_ARCH, 1);
