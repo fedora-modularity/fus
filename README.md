@@ -1,6 +1,6 @@
 ## Purpose
 
-This tool attempts to produce a viable "depsolved" collection of packagages.
+This tool attempts to produce a viable "depsolved" collection of packages.
 
 Unlike earlier tools of this type, it understands the concept of modules and module
 streams and can incorporate them into the dependency solving algorithm.
