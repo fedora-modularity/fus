@@ -867,6 +867,23 @@ resolve_all_solvables (Pool  *pool,
   return solv_failed;
 }
 
+/**
+ * remove_from_selection:
+ * @pool: initialized pool
+ * @selection: a selection of solvables
+ * @solvid: Id of solvable to be subtracted from the selection
+ */
+static void
+remove_from_selection (Pool  *pool,
+                       Queue *selection,
+                       Id     solvid)
+{
+    g_auto(Queue) remove;
+    queue_init (&remove);
+    selection_make (pool, &remove, pool_solvid2str (pool, solvid), SELECTION_CANON);
+    selection_subtract (pool, selection, &remove);
+}
+
 static void
 add_solvable_to_pile (const char *solvable,
                       Pool       *pool,
@@ -878,7 +895,32 @@ add_solvable_to_pile (const char *solvable,
   g_auto(Queue) sel;
   queue_init (&sel);
   selection_make (pool, &sel, solvable, sel_flags);
-  selection_subtract (pool, &sel, exclude);
+
+  /* Now selection contains everything that matches the pattern. If we
+   * specified * as input, we want to exclude all modular stuff and select best
+   * bare RPM, even if it is masked by something.
+   */
+  if (g_strcmp0 (solvable, "*") != 0)
+    {
+      /* Remove masked packages */
+      selection_subtract (pool, &sel, exclude);
+    }
+  else
+    {
+      Id *pp = pool_whatprovides_ptr (pool, pool_str2id (pool, "module()", 1));
+      for (; *pp; pp++)
+        {
+          Solvable *s = pool_id2solvable (pool, *pp);
+          g_auto(Queue) q;
+          queue_init (&q);
+          Id dep = pool_rel2id (pool, s->name, s->arch, REL_ARCH, 1);
+          pool_whatcontainsdep (pool, SOLVABLE_REQUIRES, dep, &q, 0);
+
+          /* Remove modular packages */
+          for (int i = 0; i < q.count; i++)
+            remove_from_selection (pool, &sel, q.elements[i]);
+        }
+    }
 
   g_auto(Queue) q;
   queue_init (&q);
