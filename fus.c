@@ -914,12 +914,19 @@ add_solvable_to_pile (const char *solvable,
                       Queue      *pile,
                       Queue      *exclude)
 {
-  static int sel_flags = SELECTION_NAME | SELECTION_PROVIDES | SELECTION_GLOB |
-                         SELECTION_CANON | SELECTION_DOTARCH;
   g_auto(Queue) sel;
   queue_init (&sel);
-  selection_make (pool, &sel, solvable, sel_flags);
+  /* First let's select packages based on name, glob or name.arch combination ... */
+  selection_make (pool, &sel, solvable,
+                  SELECTION_NAME | SELECTION_PROVIDES | SELECTION_GLOB | SELECTION_DOTARCH);
+  /* ... then remove masked packages from the selection (either hidden in
+   * non-default module stream) or bare RPMs hidden by a package in default
+   * module stream) ... */
   selection_subtract (pool, &sel, exclude);
+  /* ... and finally add anything that matches the exact NEVRA. No masking
+   * should apply here, since if the user specified exact build, they probably
+   * really want it. */
+  selection_make (pool, &sel, solvable, SELECTION_CANON | SELECTION_ADD);
 
   g_auto(Queue) q;
   queue_init (&q);

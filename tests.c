@@ -149,6 +149,7 @@ int main (int argc, char **argv)
   ADD_TEST ("/module/empty", "empty-module");
   ADD_TEST ("/solvable-selection/pull-bare", "pull-bare");
   ADD_TEST ("/solvable-selection/pull-from-default-stream", "pull-default-module");
+  ADD_TEST ("/solvable-selection/explicit-nevra", "explicit-nevra");
 
   g_test_add_func ("/fail/invalid-repo", test_invalid_repo);
 
