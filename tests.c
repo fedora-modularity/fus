@@ -140,6 +140,14 @@ int main (int argc, char **argv)
   g_test_init (&argc, &argv, NULL);
   g_test_bug_base ("https://github.com/fedora-modularity/fus/issues");
 
+  /*
+   * By default, g_test_init set log flags to be fatal on CRITICAL and WARNING
+   * levels. We overwrite this setting here so that fus does not abort on
+   * g_warning. This allows us to check both for warning messages and the
+   * result of the solving.
+   */
+  g_log_set_always_fatal (G_LOG_FATAL_MASK | G_LOG_LEVEL_CRITICAL);
+
   ADD_TEST ("/ursine/simple", "ursine");
   ADD_TEST ("/ursine/masking", "masking");
   ADD_TEST ("/require/negative", "negative");
