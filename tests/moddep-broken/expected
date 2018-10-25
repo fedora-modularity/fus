@@ -1,3 +1,6 @@
 module:C:master:2018:deadbeef.x86_64@yaml
 module:D:master:2018:deadbeef.x86_64@yaml
 module:E:master:2018:deadbeef.x86_64@yaml
+*E-1.0-1.x86_64@repo
+*D-1.0-1.x86_64@repo
+*C-1.0-1.x86_64@repo
