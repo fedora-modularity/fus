@@ -1,0 +1,23 @@
+=Ver: 2.0
+
+# Belongs to module:C:master:2018:deadbeef.x86_64
+=Pkg: C 1 1 x86_64
+=Req: foo
+
+# Belongs to module:D:master:2018:deadbeef.x86_64
+=Pkg: D 1 1 x86_64
+=Req: bar
+
+# Belongs to module:D:compat:2018:deadbeef.i686
+=Pkg: D 1 1 i686
+=Req: bar
+
+# Belongs to module:E:master:2018:deadbeef.noarch
+=Pkg: E 1 1 noarch
+
+# Ursine packages
+=Pkg: foo 1 1 i686
+=Pkg: foo 1 1 ppc64
+=Pkg: foo 1 1 x86_64
+=Pkg: bar 1 1 i686
+=Pkg: bar 1 1 ppc64

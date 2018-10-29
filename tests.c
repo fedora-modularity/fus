@@ -146,6 +146,7 @@ int main (int argc, char **argv)
   ADD_TEST ("/require/positive", "positive");
   ADD_TEST ("/require/empty", "empty");
   ADD_TEST ("/require/alternatives", "alternatives");
+  ADD_TEST ("/require/multilib", "multilib");
   ADD_TEST ("/module/empty", "empty-module");
 
   g_test_add_func ("/fail/invalid-repo", test_invalid_repo);
