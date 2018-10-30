@@ -764,6 +764,7 @@ static gboolean
 _install_transaction (Pool         *pool,
                       Queue        *pile,
                       Queue        *job,
+                      Map          *tested,
                       unsigned int  indent)
 {
   g_autoptr(Solver) solver = solve (pool, job);
@@ -778,10 +779,92 @@ _install_transaction (Pool         *pool,
     {
       Id p = installedq.elements[x];
       queue_pushunique (pile, p);
-      g_debug ("%*c - %s", indent, ' ', pool_solvid2str (pool, p));
+      const gchar *solvable = pool_solvid2str (pool, p);
+      g_debug ("%*c - %s", indent, ' ', solvable);
+      /* Non-modules are immediately marked as resolved, since for RPM the
+       * result would not change if done again. However for modules we need to
+       * make sure we look at all combinations. */
+      if (!g_str_has_prefix (solvable, "module:"))
+        map_set (tested, p);
     }
 
   return TRUE;
+}
+
+/**
+ * mask_bare_rpms:
+ * @pool: initialized pool
+ *
+ * For each available modular package, find all bare RPMs with the same name,
+ * and mark them as not considered.
+ */
+static void
+mask_bare_rpms (Pool *pool)
+{
+  /* Get array of all existing modular packages. */
+  Id *modular_packages = pool_whatprovides_ptr (pool, pool_str2id (pool, MODPKG_PROV, 1));
+
+  /* Filter it to keep only available packages. A package that is not
+   * considered should not mask anything. */
+  g_auto(Queue) available_modular_pkgs;
+  queue_init(&available_modular_pkgs);
+  for (Id *pp = modular_packages; *pp; pp++)
+    if (map_tst (pool->considered, *pp))
+      queue_push (&available_modular_pkgs, *pp);
+
+  for (int i = 0; i < available_modular_pkgs.count; i++)
+    {
+      Id pp = available_modular_pkgs.elements[i];
+      Solvable *modpkg = pool_id2solvable (pool, pp);
+
+      g_auto(Queue) sel;
+      queue_init (&sel);
+      selection_make (pool, &sel, pool_id2str (pool, modpkg->name), SELECTION_NAME);
+      if (!sel.count)
+        {
+          /* This should never happen, at least one package
+           * should match (the modular one). */
+          continue;
+        }
+      g_auto(Queue) q;
+      queue_init (&q);
+      selection_solvables (pool, &sel, &q);
+
+      for (int j = 0; j < q.count; j++)
+        {
+          Id p = q.elements[j];
+          if (!queue_contains (&available_modular_pkgs, p))
+            map_clr (pool->considered, p);
+        }
+    }
+}
+
+/**
+ * disable_module:
+ * @pool: initialized pool
+ * @module: Id of the module to be disabled
+ *
+ * Set the module and all packages in it as not considered. The packages would
+ * not be pulled in anyway since that would require pulling in disabled module,
+ * but if they are considered, it would cause problems with masking unavailable
+ * packages since we wouldn't really know which modular packages are available.
+ */
+static void
+disable_module (Pool *pool, Id module)
+{
+  map_clr (pool->considered, module);
+
+  Solvable *s = pool_id2solvable (pool, module);
+  g_auto(Queue) q;
+  queue_init (&q);
+  Id dep = pool_rel2id (pool, s->name, s->arch, REL_ARCH, 1);
+  pool_whatcontainsdep (pool, SOLVABLE_REQUIRES, dep, &q, 0);
+
+  for (int k = 0; k < q.count; k++)
+    {
+      Id p = q.elements[k];
+      map_clr (pool->considered, p);
+    }
 }
 
 
@@ -826,7 +909,14 @@ resolve_all_solvables (Pool  *pool,
             {
               g_debug ("Installing %s:", pool_solvid2str (pool, p));
 
-              if (!_install_transaction (pool, pile, &job, 2))
+              /* Disable all non-default unrelated modules */
+              Id *pp = pool_whatprovides_ptr (pool, ndef_modules_rel);
+              for (; *pp; pp++)
+                disable_module (pool, *pp);
+
+              mask_bare_rpms (pool);
+
+              if (!_install_transaction (pool, pile, &job, &tested, 2))
                 solv_failed = TRUE;
             }
           else
@@ -859,7 +949,9 @@ resolve_all_solvables (Pool  *pool,
                   Id *pp = pool_whatprovides_ptr (pool, ndef_modules_rel);
                   for (; *pp; pp++)
                     if (!queue_contains (&t, *pp))
-                      map_clr (pool->considered, *pp);
+                      disable_module (pool, *pp);
+
+                  mask_bare_rpms(pool);
 
                   Queue pjobs = pool->pooljobs;
                   pool->pooljobs = job;
@@ -887,7 +979,7 @@ resolve_all_solvables (Pool  *pool,
                           queue_push2 (&j, SOLVER_SOLVABLE | SOLVER_INSTALL, p);
                           g_debug ("    Installing %s:", pool_solvid2str (pool, p));
 
-                          if (!_install_transaction (pool, pile, &j, 6))
+                          if (!_install_transaction (pool, pile, &j, &tested, 6))
                             solv_failed = TRUE;
                         }
                     }
