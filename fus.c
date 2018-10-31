@@ -1003,13 +1003,23 @@ resolve_all_solvables (Pool  *pool,
 static void
 add_solvable_to_pile (const char *solvable,
                       Pool       *pool,
-                      Queue      *pile)
+                      Queue      *pile,
+                      Queue      *exclude)
 {
-  static int sel_flags = SELECTION_NAME | SELECTION_PROVIDES | SELECTION_GLOB |
-                         SELECTION_CANON | SELECTION_DOTARCH;
   g_auto(Queue) sel;
   queue_init (&sel);
-  selection_make (pool, &sel, solvable, sel_flags);
+  /* First let's select packages based on name, glob or name.arch combination ... */
+  selection_make (pool, &sel, solvable,
+                  SELECTION_NAME | SELECTION_PROVIDES | SELECTION_GLOB | SELECTION_DOTARCH);
+  /* ... then remove masked packages from the selection (either hidden in
+   * non-default module stream) or bare RPMs hidden by a package in default
+   * module stream) ... */
+  selection_subtract (pool, &sel, exclude);
+  /* ... and finally add anything that matches the exact NEVRA. No masking
+   * should apply here, since if the user specified exact build, they probably
+   * really want it. */
+  selection_make (pool, &sel, solvable, SELECTION_CANON | SELECTION_ADD);
+
   g_auto(Queue) q;
   queue_init (&q);
   selection_solvables (pool, &sel, &q);
@@ -1027,6 +1037,7 @@ static gboolean
 add_solvables_from_file_to_pile (const char *filename,
                                  Pool       *pool,
                                  Queue      *pile,
+                                 Queue      *exclude,
                                  GError    **error)
 {
   g_autoptr(GIOChannel) ch = g_io_channel_new_file (filename, "r", error);
@@ -1048,7 +1059,7 @@ add_solvables_from_file_to_pile (const char *filename,
 
       content[tpos] = '\0';
       if (*content)
-        add_solvable_to_pile (content, pool, pile);
+        add_solvable_to_pile (content, pool, pile, exclude);
     }
   while (ret == G_IO_STATUS_NORMAL);
 
@@ -1064,6 +1075,7 @@ add_solvables_from_file_to_pile (const char *filename,
 static gboolean
 add_solvables_to_pile (Pool    *pool,
                        Queue   *pile,
+                       Queue   *exclude,
                        GStrv    solvables,
                        GError **error)
 {
@@ -1074,14 +1086,92 @@ add_solvables_to_pile (Pool    *pool,
       /* solvables prefixed by @ are file names */
       if (**solvable == '@')
         {
-          if (!add_solvables_from_file_to_pile (*solvable + 1, pool, pile, error))
+          if (!add_solvables_from_file_to_pile (*solvable + 1, pool, pile, exclude, error))
             return FALSE;
         }
       else
-        add_solvable_to_pile (*solvable, pool, pile);
+        add_solvable_to_pile (*solvable, pool, pile, exclude);
     }
 
   return TRUE;
+}
+
+static Queue
+mask_non_default_module_pkgs (Pool *pool)
+{
+  Queue selection;
+  queue_init(&selection);
+
+  Id ndef_modules_rel = pool_rel2id (pool,
+                                     pool_str2id (pool, "module()", 1),
+                                     pool_str2id (pool, "module-default()", 1),
+                                     REL_WITHOUT,
+                                     1);
+  Id *pp = pool_whatprovides_ptr (pool, ndef_modules_rel);
+  for (; *pp; pp++)
+    {
+      Solvable *s = pool_id2solvable (pool, *pp);
+      g_auto(Queue) q;
+      queue_init (&q);
+      Id dep = pool_rel2id (pool, s->name, s->arch, REL_ARCH, 1);
+      pool_whatcontainsdep (pool, SOLVABLE_REQUIRES, dep, &q, 0);
+
+      for (int i = 0; i < q.count; i++)
+        {
+          static int sel_flags = SELECTION_CANON;
+          g_auto(Queue) remove;
+          queue_init (&remove);
+          selection_make (pool, &remove, pool_solvid2str (pool, q.elements[i]), sel_flags);
+          selection_add (pool, &selection, &remove);
+        }
+    }
+
+  return selection;
+}
+
+/*
+ * Mask bare rpms if any of the default modules provides them (even if older)
+ */
+static Queue
+mask_solvable_bare_rpms (Pool *pool)
+{
+  Queue selection;
+  queue_init (&selection);
+
+  Id def_modules_rel = pool_rel2id (pool,
+                                    pool_str2id (pool, "module()", 1),
+                                    pool_str2id (pool, "module-default()", 1),
+                                    REL_WITH,
+                                    1);
+
+  Id *pp = pool_whatprovides_ptr (pool, def_modules_rel);
+  for (; *pp; pp++)
+    {
+      Solvable *s = pool_id2solvable (pool, *pp);
+      g_auto(Queue) q;
+      queue_init (&q);
+      Id dep = pool_rel2id (pool, s->name, s->arch, REL_ARCH, 1);
+      pool_whatcontainsdep (pool, SOLVABLE_REQUIRES, dep, &q, 0);
+
+      for (int i = 0; i < q.count; i++)
+        {
+          Solvable *modpkg = pool_id2solvable (pool, q.elements[i]);
+          Id bare_rpms_rel = pool_rel2id (pool,
+                                          modpkg->name,
+                                          pool_str2id (pool, MODPKG_PROV, 1),
+                                          REL_WITHOUT,
+                                          1);
+
+          Id *mp = pool_whatprovides_ptr (pool, bare_rpms_rel);
+          for (; *mp; mp++)
+            selection_make (pool,
+                            &selection,
+                            pool_solvid2str (pool, *mp),
+                            SELECTION_CANON | SELECTION_ADD);
+        }
+    }
+
+  return selection;
 }
 
 GPtrArray *
@@ -1136,13 +1226,20 @@ fus_depsolve (const char *arch,
   /* Find out excluded packages */
   g_auto(Map) excludes = apply_excludes (pool, exclude_packages, lookaside_repos, &modular_pkgs);
 
+  /* Find packages from non-default modules */
+  g_auto(Queue) disconsider = mask_non_default_module_pkgs (pool);
+
+  /* Find bare rpms masked by default modules */
+  g_auto(Queue) bare_rpms = mask_solvable_bare_rpms (pool);
+  selection_add (pool, &disconsider, &bare_rpms);
+
   g_auto(Map) considered;
   pool->considered = &considered;
   map_init_clone (pool->considered, &excludes);
 
   g_auto(Queue) pile;
   queue_init (&pile);
-  if (!add_solvables_to_pile (pool, &pile, solvables, error))
+  if (!add_solvables_to_pile (pool, &pile, &disconsider, solvables, error))
     return NULL;
   if (!pile.count)
     {
