@@ -42,17 +42,28 @@ test_invalid_repo (void)
 static void
 test_run (TestData *td, gconstpointer data)
 {
-  g_autoptr(GError) error = NULL;
   GStrv repos = (char **)td->repos->pdata;
 
-  g_autoptr(GPtrArray) result = NULL;
-  result = fus_depsolve (ARCH, PLATFORM, NULL, repos, td->solvables, &error);
-  g_assert_no_error (error);
-  g_assert (result != NULL);
+  if (g_test_subprocess ())
+    {
+      g_autoptr(GError) error = NULL;
+      g_autoptr(GPtrArray) result = NULL;
+      result = fus_depsolve (ARCH, PLATFORM, NULL, repos, td->solvables, &error);
+      g_assert_no_error (error);
+      g_assert (result != NULL);
 
-  g_autofree char *strres = g_strjoinv ("\n", (char **)result->pdata);
-  g_autofree char *diff = testcase_resultdiff (td->expected, strres);
-  g_assert_cmpstr (diff, ==, NULL);
+      g_autofree char *strres = g_strjoinv ("\n", (char **)result->pdata);
+      g_autofree char *diff = testcase_resultdiff (td->expected, strres);
+      g_assert_cmpstr (diff, ==, NULL);
+
+      return;
+    }
+
+  g_test_trap_subprocess (NULL, 0, 0);
+  g_test_trap_assert_passed ();
+  g_test_trap_assert_stdout_unmatched ("*Problem * / *");
+  g_test_trap_assert_stderr_unmatched ("*Nothing matches*");
+  g_test_trap_assert_stderr_unmatched ("*Can't resolve all solvables*");
 }
 
 static void
