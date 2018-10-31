@@ -1117,13 +1117,10 @@ mask_non_default_module_pkgs (Pool *pool)
       pool_whatcontainsdep (pool, SOLVABLE_REQUIRES, dep, &q, 0);
 
       for (int i = 0; i < q.count; i++)
-        {
-          static int sel_flags = SELECTION_CANON;
-          g_auto(Queue) remove;
-          queue_init (&remove);
-          selection_make (pool, &remove, pool_solvid2str (pool, q.elements[i]), sel_flags);
-          selection_add (pool, &selection, &remove);
-        }
+        selection_make (pool,
+                        &selection,
+                        pool_solvid2str (pool, q.elements[i]),
+                        SELECTION_CANON | SELECTION_ADD);
     }
 
   return selection;
