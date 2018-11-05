@@ -35,6 +35,7 @@ test_broken_dep (TestData *td, gconstpointer data)
       result = fus_depsolve (ARCH, PLATFORM, NULL, repos, td->solvables, &error);
       g_assert (result != NULL);
       g_assert_no_error (error);
+      g_ptr_array_add (result, NULL); /* Need by g_strjoinv below */
       g_autofree char *strres = g_strjoinv ("\n", (char **)result->pdata);
       g_autofree char *diff = testcase_resultdiff (td->expected, strres);
       g_assert_cmpstr (diff, ==, NULL);
@@ -115,6 +116,7 @@ test_run (TestData *td, gconstpointer data)
       g_assert_no_error (error);
       g_assert (result != NULL);
 
+      g_ptr_array_add (result, NULL); /* Need by g_strjoinv below */
       g_autofree char *strres = g_strjoinv ("\n", (char **)result->pdata);
       g_autofree char *diff = testcase_resultdiff (td->expected, strres);
       g_assert_cmpstr (diff, ==, NULL);
