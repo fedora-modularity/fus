@@ -1286,7 +1286,6 @@ fus_depsolve (const char *arch,
                                     pool_solvable2str (pool, s), s->repo->name);
       g_ptr_array_add (output, name);
     }
-  g_ptr_array_add (output, NULL);
 
   return output;
 }
