@@ -8,6 +8,9 @@
 #define ADD_TEST(name, dir) \
   g_test_add(name, TestData, dir, test_setup, test_run, test_teardown)
 
+#define ADD_SOLV_FAIL_TEST(name, dir) \
+  g_test_add(name, TestData, dir, test_setup, test_broken_dep, test_teardown)
+
 typedef struct _test_data {
   GPtrArray *repos;
   GStrv solvables;
@@ -18,25 +21,85 @@ typedef struct _test_data {
 extern GPtrArray *fus_depsolve(const char *, const char *, const GStrv, const GStrv, const GStrv, GError **);
 
 static void
-test_invalid_repo (void)
+test_broken_dep (TestData *td, gconstpointer data)
 {
-  gchar *repos[] = {"repo,repo,invalid/packages.repo"};
-  gchar *solvables[] = {"invalid"};
+  GStrv repos = (char **)td->repos->pdata;
+  const gchar *dir = data;
 
-  if (g_test_subprocess())
+  if (g_test_subprocess ())
     {
       g_autoptr(GError) error = NULL;
       g_autoptr(GPtrArray) result = NULL;
-      result = fus_depsolve (ARCH, PLATFORM, NULL, repos, solvables, &error);
-      g_assert_error (error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED);
-      g_assert (result == NULL);
-      g_printerr (error->message);
+      g_test_expect_message (G_LOG_DOMAIN, G_LOG_LEVEL_WARNING,
+                             "*Can't resolve all solvables*");
+      result = fus_depsolve (ARCH, PLATFORM, NULL, repos, td->solvables, &error);
+      g_assert (result != NULL);
+      g_assert_no_error (error);
+      g_autofree char *strres = g_strjoinv ("\n", (char **)result->pdata);
+      g_autofree char *diff = testcase_resultdiff (td->expected, strres);
+      g_assert_cmpstr (diff, ==, NULL);
+      g_test_assert_expected_messages ();
       return;
     }
 
   g_test_trap_subprocess (NULL, 0, 0);
   g_test_trap_assert_passed ();
-  g_test_trap_assert_stderr ("*Could not open invalid/packages.repo*");
+
+  const char *probfile = g_test_get_filename (G_TEST_DIST, dir, "problems", NULL);
+  if (g_file_test (probfile, G_FILE_TEST_IS_REGULAR))
+    {
+      g_autofree char *content = NULL;
+      g_autoptr(GError) error = NULL;
+      g_file_get_contents (probfile, &content, NULL, &error);
+      g_assert_no_error (error);
+      g_assert (content != NULL);
+      g_test_trap_assert_stdout (content);
+    }
+}
+
+static void
+test_fail_invalid_solvable (void)
+{
+  GStrv repos = NULL;
+  gchar *solvables[] = {"invalid", NULL};
+
+  g_autoptr(GError) error = NULL;
+  g_autoptr(GPtrArray) result = NULL;
+  g_test_expect_message (G_LOG_DOMAIN, G_LOG_LEVEL_WARNING,
+                         "*Nothing matches 'invalid'*");
+  result = fus_depsolve (ARCH, PLATFORM, NULL, repos, solvables, &error);
+  g_assert (result == NULL);
+  g_assert_cmpstr (error->message, ==, "No solvables matched");
+  g_test_assert_expected_messages ();
+}
+
+static void
+test_fail_no_solvables (void)
+{
+  GStrv repos = NULL;
+  GStrv solvables = NULL;
+
+  g_autoptr(GError) error = NULL;
+  g_autoptr(GPtrArray) result = NULL;
+  result = fus_depsolve (ARCH, PLATFORM, NULL, repos, solvables, &error);
+  g_assert_error (error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED);
+  g_assert (result == NULL);
+  g_assert_cmpstr (error->message, ==, "No solvables matched");
+}
+
+static void
+test_invalid_repo (void)
+{
+  gchar *repos[] = {"repo,repo,invalid/packages.repo"};
+  gchar *solvables[] = {"invalid"};
+
+  g_autoptr(GError) error = NULL;
+  g_autoptr(GPtrArray) result = NULL;
+  result = fus_depsolve (ARCH, PLATFORM, NULL, repos, solvables, &error);
+  g_assert (result == NULL);
+  g_assert_error (error, G_OPTION_ERROR, G_OPTION_ERROR_FAILED);
+  g_assert_cmpstr (error->message, ==,
+                   "Could not open invalid/packages.repo: No such file or directory");
 }
 
 static void
@@ -151,6 +214,14 @@ int main (int argc, char **argv)
   g_test_init (&argc, &argv, NULL);
   g_test_bug_base ("https://github.com/fedora-modularity/fus/issues");
 
+  /*
+   * By default, g_test_init set log flags to be fatal on CRITICAL and WARNING
+   * levels. We overwrite this setting here so that fus does not abort on
+   * g_warning. This allows us to check both for warning messages and the
+   * result of the solving.
+   */
+  g_log_set_always_fatal (G_LOG_FATAL_MASK | G_LOG_LEVEL_CRITICAL);
+
   ADD_TEST ("/ursine/simple", "ursine");
   ADD_TEST ("/ursine/masking", "masking");
   ADD_TEST ("/require/negative", "negative");
@@ -163,11 +234,17 @@ int main (int argc, char **argv)
   ADD_TEST ("/solvable-selection/explicit-nevra", "explicit-nevra");
 
   g_test_add_func ("/fail/invalid-repo", test_invalid_repo);
+  g_test_add_func ("/fail/no-solvables", test_fail_no_solvables);
+  g_test_add_func ("/fail/invalid-solvable", test_fail_invalid_solvable);
 
   ADD_TEST ("/ursine/default-stream-dep", "default-stream");
   ADD_TEST ("/ursine/prefer-over-non-default-stream", "non-default-stream");
 
   ADD_TEST ("/lookaside/same-repo", "input-as-lookaside");
+
+  ADD_SOLV_FAIL_TEST ("/fail/ursine/broken", "ursine-broken");
+  ADD_SOLV_FAIL_TEST ("/fail/module/broken", "module-broken");
+  ADD_SOLV_FAIL_TEST ("/fail/moddep/broken", "moddep-broken");
 
   return g_test_run ();
 }

@@ -1,0 +1,19 @@
+Problem 1 / 1:
+  - conflicting requests
+  - nothing provides (module(D) with module(D:stable)) needed by module:C:master:2018:deadbeef.x86_64
+Problem 1 / 1:
+  - conflicting requests
+  - nothing provides ((module(platform) with module(platform:f30)) and (module(E) with module(E:master))) needed by module:D:master:2018:deadbeef.x86_64
+Problem 1 / 1:
+  - package E-1.0-1.x86_64 requires C, but none of the providers can be installed
+  - package C-1.0-1.x86_64 requires module:C:master:2018:deadbeef.x86_64, but none of the providers can be installed
+  - conflicting requests
+  - nothing provides (module(D) with module(D:stable)) needed by module:C:master:2018:deadbeef.x86_64
+Problem 1 / 1:
+  - package C-1.0-1.x86_64 requires module:C:master:2018:deadbeef.x86_64, but none of the providers can be installed
+  - conflicting requests
+  - nothing provides (module(D) with module(D:stable)) needed by module:C:master:2018:deadbeef.x86_64
+Problem 1 / 1:
+  - package D-1.0-1.x86_64 requires module:D:master:2018:deadbeef.x86_64, but none of the providers can be installed
+  - conflicting requests
+  - nothing provides ((module(platform) with module(platform:f30)) and (module(E) with module(E:master))) needed by module:D:master:2018:deadbeef.x86_64*

@@ -1,0 +1,11 @@
+=Ver: 2.0
+
+# Belongs to module:C:master:2018:deadbeef.x86_64
+=Pkg: C 1.0 1 x86_64
+
+# Belongs to module:D:master:2018:deadbeef.x86_64
+=Pkg: D 1.0 1 x86_64
+
+# Belongs to module:E:master:2018:deadbeef.x86_64
+=Pkg: E 1.0 1 x86_64
+=Req: C

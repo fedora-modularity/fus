@@ -867,6 +867,47 @@ disable_module (Pool *pool, Id module)
     }
 }
 
+static gboolean
+add_module_and_pkgs_to_pile (Pool     *pool,
+                             Queue    *pile,
+                             Map      *tested,
+                             Id        module,
+                             gboolean  with_deps)
+{
+  gboolean solv_failed = FALSE;
+
+  /* Make sure to include the module into the pile even if
+   * it doesn't contain any components (e.g, an empty module)
+   */
+  queue_pushunique (pile, module);
+
+  g_auto(Queue) q;
+  queue_init (&q);
+  Solvable *s = pool_id2solvable (pool, module);
+  Id dep = pool_rel2id (pool, s->name, s->arch, REL_ARCH, 1);
+  pool_whatcontainsdep (pool, SOLVABLE_REQUIRES, dep, &q, 0);
+
+  g_auto(Queue) j;
+  queue_init (&j);
+  for (int k = 0; k < q.count; k++)
+    {
+      Id p = q.elements[k];
+      /* Add modular package even if it's not installable */
+      queue_pushunique (pile, p);
+
+      if (!with_deps)
+        continue;
+
+      queue_empty (&j);
+      queue_push2 (&j, SOLVER_SOLVABLE | SOLVER_INSTALL, p);
+      g_debug ("    Installing %s:", pool_solvid2str (pool, p));
+
+      if (!_install_transaction (pool, pile, &j, tested, 6))
+        solv_failed = TRUE;
+    }
+
+  return solv_failed;
+}
 
 static gboolean
 resolve_all_solvables (Pool  *pool,
@@ -925,7 +966,11 @@ resolve_all_solvables (Pool  *pool,
               g_autoptr(GArray) transactions = gather_alternatives (pool, &job);
 
               if (transactions->len == 0)
-                solv_failed = TRUE;
+                {
+                  solv_failed = TRUE;
+                  /* Add module and its packages even if they have broken deps */
+                  add_module_and_pkgs_to_pile (pool, pile, &tested, p, FALSE);
+                }
 
               for (unsigned int i = 0; i < transactions->len; i++)
                 {
@@ -956,33 +1001,11 @@ resolve_all_solvables (Pool  *pool,
                   Queue pjobs = pool->pooljobs;
                   pool->pooljobs = job;
                   for (int j = 0; j < t.count; j++)
-                    {
-                      Id p = t.elements[j];
-                      Solvable *s = pool_id2solvable (pool, p);
-
-                      /* Make sure to include the module into the pile even if
-                       * it doesn't contain any components (e.g, an empty module)
-                       */
-                      queue_pushunique (pile, p);
-
-                      g_auto(Queue) q;
-                      queue_init (&q);
-                      Id dep = pool_rel2id (pool, s->name, s->arch, REL_ARCH, 1);
-                      pool_whatcontainsdep (pool, SOLVABLE_REQUIRES, dep, &q, 0);
-
-                      g_auto(Queue) j;
-                      queue_init (&j);
-                      for (int k = 0; k < q.count; k++)
-                        {
-                          Id p = q.elements[k];
-                          queue_empty (&j);
-                          queue_push2 (&j, SOLVER_SOLVABLE | SOLVER_INSTALL, p);
-                          g_debug ("    Installing %s:", pool_solvid2str (pool, p));
-
-                          if (!_install_transaction (pool, pile, &j, &tested, 6))
-                            solv_failed = TRUE;
-                        }
-                    }
+                    solv_failed |= add_module_and_pkgs_to_pile (pool,
+                                                                pile,
+                                                                &tested,
+                                                                t.elements[j],
+                                                                TRUE);
                   pool->pooljobs = pjobs;
                 }
             }
