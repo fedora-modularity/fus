@@ -794,12 +794,14 @@ _install_transaction (Pool         *pool,
 /**
  * mask_bare_rpms:
  * @pool: initialized pool
+ * @pile: the queue of packages for resolution
  *
  * For each available modular package, find all bare RPMs with the same name,
- * and mark them as not considered.
+ * and mark them as not considered if they are not in the pile.
  */
 static void
-mask_bare_rpms (Pool *pool)
+mask_bare_rpms (Pool  *pool,
+                Queue *pile)
 {
   /* Get array of all existing modular packages. */
   Id *modular_packages = pool_whatprovides_ptr (pool, pool_str2id (pool, MODPKG_PROV, 1));
@@ -833,7 +835,11 @@ mask_bare_rpms (Pool *pool)
       for (int j = 0; j < q.count; j++)
         {
           Id p = q.elements[j];
-          if (!queue_contains (&available_modular_pkgs, p))
+          /* A bare RPM can be in the pile if, e.g, it was requested
+           * explicitly. In that case, we don't want to disconsider it,
+           * otherwise libsolv will report resolution problems */
+          if (!queue_contains (&available_modular_pkgs, p) &&
+              !queue_contains (pile, p))
             map_clr (pool->considered, p);
         }
     }
@@ -955,7 +961,7 @@ resolve_all_solvables (Pool  *pool,
               for (; *pp; pp++)
                 disable_module (pool, *pp);
 
-              mask_bare_rpms (pool);
+              mask_bare_rpms (pool, pile);
 
               if (!_install_transaction (pool, pile, &job, &tested, 2))
                 solv_failed = TRUE;
@@ -996,7 +1002,7 @@ resolve_all_solvables (Pool  *pool,
                     if (!queue_contains (&t, *pp))
                       disable_module (pool, *pp);
 
-                  mask_bare_rpms(pool);
+                  mask_bare_rpms(pool, pile);
 
                   Queue pjobs = pool->pooljobs;
                   pool->pooljobs = job;
