@@ -132,6 +132,33 @@ test_run (TestData *td, gconstpointer data)
 }
 
 static void
+test_order (TestData *td, gconstpointer data)
+{
+  const gchar *dir = data;
+  g_autoptr(GError) error = NULL;
+  g_autofree char *content = NULL;
+
+  const gchar *infile = g_test_get_filename (G_TEST_DIST, dir, "input", NULL);
+  g_file_get_contents (infile, &content, NULL, &error);
+  g_assert_no_error (error);
+  g_assert (content != NULL);
+
+  GStrv input = g_strsplit (content, "\n", -1);
+  int len = g_strv_length (input);
+  /* Try out some input permutations */
+  for (int i = 0; i < len / 2; i++) {
+    /* swap */
+    char *tmp = input[i];
+    input[i] = input[len - i - 1];
+    input[len - i - 1] = tmp;
+
+    test_run (td, data);
+  }
+
+  g_strfreev (input);
+}
+
+static void
 test_teardown (TestData *tdata, gconstpointer data)
 {
   g_ptr_array_unref (tdata->repos);
@@ -234,6 +261,13 @@ int main (int argc, char **argv)
   ADD_TEST ("/solvable-selection/pull-bare", "pull-bare");
   ADD_TEST ("/solvable-selection/pull-from-default-stream", "pull-default-module");
   ADD_TEST ("/solvable-selection/explicit-nevra", "explicit-nevra");
+
+  g_test_add ("/solvable-selection/order",
+              TestData,
+              "order",
+              test_setup,
+              test_order,
+              test_teardown);
 
   g_test_add_func ("/fail/invalid-repo", test_invalid_repo);
   g_test_add_func ("/fail/no-solvables", test_fail_no_solvables);

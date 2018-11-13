@@ -1,0 +1,224 @@
+---
+document: modulemd
+version: 2
+data:
+  name: def_req_def
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: x86_64
+  dependencies:
+    - buildrequires:
+        platform: [f29]
+      requires:
+        platform: [f29]
+        def_req_none: [master]
+  artifacts:
+    rpms:
+      - A-0:1-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: def_req_none
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: x86_64
+  dependencies:
+    - buildrequires:
+        platform: [f29]
+      requires:
+        platform: [f29]
+  artifacts:
+    rpms:
+      - B-0:1-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: def_req_nondef
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: x86_64
+  dependencies:
+    - buildrequires:
+        platform: [f29]
+      requires:
+        platform: [f29]
+        nondef_req_none: [master]
+  artifacts:
+    rpms:
+      - C-0:1-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: nondef_req_def
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: x86_64
+  dependencies:
+    - buildrequires:
+        platform: [f29]
+      requires:
+        platform: [f29]
+        def_req_none: [master]
+  artifacts:
+    rpms:
+      - D-0:2-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: nondef_req_none
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: x86_64
+  dependencies:
+    - buildrequires:
+        platform: [f29]
+      requires:
+        platform: [f29]
+        nondef_req_none: [master]
+  artifacts:
+    rpms:
+      - E-0:1-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: nondef_req_nondef
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: x86_64
+  dependencies:
+    - buildrequires:
+        platform: [f29]
+      requires:
+        platform: [f29]
+  artifacts:
+    rpms:
+      - F-0:1-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: def_has_solvable
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: x86_64
+  dependencies:
+    - buildrequires:
+        platform: [f29]
+      requires:
+        platform: [f29]
+  artifacts:
+    rpms:
+      - G-0:1-1.noarch
+      - solvable1-0:1-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: nondef_has_solvable
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: x86_64
+  dependencies:
+    - buildrequires:
+        platform: [f29]
+      requires:
+        platform: [f29]
+  artifacts:
+    rpms:
+      - H-0:1-1.noarch
+      - solvable2-0:1-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: def_has_dep
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: x86_64
+  dependencies:
+    - buildrequires:
+        platform: [f29]
+      requires:
+        platform: [f29]
+  artifacts:
+    rpms:
+      - I-0:1-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: nondef_has_dep
+  stream: master
+  version: 2018
+  context: deadbeef
+  arch: x86_64
+  dependencies:
+    - buildrequires:
+        platform: [f29]
+      requires:
+        platform: [f29]
+  artifacts:
+    rpms:
+      - J-0:1-1.noarch
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+    module: def_req_def
+    stream: master
+    profiles:
+        master: [default]
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+  module: def_req_nondef
+  stream: master
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+  module: def_req_none
+  stream: master
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+  module: def_has_solvable
+  stream: master
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+  module: def_has_dep
+  stream: master
+...
+---

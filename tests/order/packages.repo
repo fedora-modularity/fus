@@ -1,0 +1,62 @@
+=Ver: 2.0
+
+# Belongs to module(def_req_def):master:2018:deadbeef.x86_64
+=Pkg: A 1 1 noarch
+=Req: AX
+
+=Pkg: AX 1 1 noarch
+
+# Belongs to module(def_req_none):master:2018:deadbeef.x86_64
+=Pkg: B 1 1 noarch
+=Req: BX
+
+=Pkg: BX 1 1 noarch
+
+# Belongs to module(def_req_nondef):master:2018:deadbeef.x86_64
+=Pkg: C 1 1 noarch
+
+# Belongs to module(nondef_req_def):master:2018:deadbeef.x86_64
+=Pkg: D 1 1 noarch
+
+# Belongs to module(nondef_req_none):master:2018:deadbeef.x86_64
+=Pkg: E 1 1 noarch
+=Req: /usr/bin/file
+
+=Pkg: EX 1 1 noarch
+=Prv: /usr/bin/file
+
+# Belongs to module(nondef_req_nondef):master:2018:deadbeef.x86_64
+=Pkg: F 1 1 noarch
+
+# Belongs to module(def_has_solvable):master:2018:deadbeef.x86_64
+=Pkg: G 1 1 noarch
+
+# Belongs to module(nondef_has_solvable):master:2018:deadbeef.x86_64
+=Pkg: H 1 1 noarch
+
+# Belongs to module(def_has_dep):master:2018:deadbeef.x86_64
+=Pkg: I 1 1 noarch
+=Prv: dep1
+
+# Belongs to module(nondef_has_dep):master:2018:deadbeef.x86_64
+=Pkg: J 1 1 noarch
+=Prv: dep2
+
+=Pkg: solvable1 1 1 noarch
+=Pkg: solvable1 2 1 noarch
+
+=Pkg: solvable2 1 1 noarch
+=Pkg: solvable2 2 1 noarch
+
+=Pkg: solvable3 1 1 noarch
+=Req: dep1
+
+=Pkg: dep1 1 1 noarch
+=Req: AX 1 1 noarch
+
+=Pkg: dep1 2 1 noarch
+
+=Pkg: solvable4 1 1 noarch
+=Req: dep2
+
+=Pkg: dep2 2 1 noarch
