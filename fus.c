@@ -126,11 +126,11 @@ add_artifacts_dependencies (Pool  *pool,
 }
 
 static void
-add_module_rpm_artifacts (Pool           *pool,
-                          ModulemdModule *module,
-                          Id              sdep)
+add_module_rpm_artifacts (Pool                 *pool,
+                          ModulemdModuleStream *module,
+                          Id                    sdep)
 {
-  g_auto(GStrv) rpm_artifacts = modulemd_simpleset_dup (modulemd_module_peek_rpm_artifacts (module));
+  g_auto(GStrv) rpm_artifacts = modulemd_simpleset_dup (modulemd_modulestream_peek_rpm_artifacts (module));
   g_auto(Queue) sel;
   queue_init (&sel);
   for (GStrv artifact = rpm_artifacts; *artifact; artifact++)
@@ -186,24 +186,25 @@ add_module_rpm_artifacts (Pool           *pool,
   add_artifacts_dependencies (pool, &sel, sdep);
 }
 
+/* TODO: implement usage of REPO_EXTEND_SOLVABLES, but modulemd doesn't store chksums */
 static void
-add_module_solvables (Repo           *repo,
-                      ModulemdModule *module)
+add_module_solvables (Repo                 *repo,
+                      ModulemdModuleStream *module)
 {
   Pool *pool = repo->pool;
 
-  const char *n = modulemd_module_peek_name (module);
+  const char *n = modulemd_modulestream_peek_name (module);
   g_autofree char *nprov = g_strdup_printf (TMPL_NPROV, n);
-  const char *s = modulemd_module_peek_stream (module);
+  const char *s = modulemd_modulestream_peek_stream (module);
   g_autofree char *nsprov = g_strdup_printf (TMPL_NSPROV, n, s);
-  const uint64_t v = modulemd_module_peek_version (module);
+  const uint64_t v = modulemd_modulestream_get_version (module);
   g_autofree char *vs = g_strdup_printf ("%" G_GUINT64_FORMAT, v);
-  const char *c = modulemd_module_peek_context (module);
-  const char *a = modulemd_module_peek_arch (module);
+  const char *c = modulemd_modulestream_peek_context (module);
+  const char *a = modulemd_modulestream_peek_arch (module);
   if (!a)
     a = "noarch";
 
-  GPtrArray *deps = modulemd_module_peek_dependencies (module);
+  GPtrArray *deps = modulemd_modulestream_peek_dependencies (module);
 
   /* If context is defined, then it's built artefact */
   if (c)
@@ -263,50 +264,42 @@ add_module_solvables (Repo           *repo,
 }
 
 static void
-_repo_add_modulemd_from_objects (Repo       *repo,
-                                 GPtrArray  *objects,
-                                 const char *language,
-                                 int         flags)
+_repo_add_modulemd_streams (Repo       *repo,
+                            GHashTable *streams,
+                            const char *language,
+                            int         flags)
+{
+  gpointer value;
+  GHashTableIter iter;
+
+  g_hash_table_iter_init (&iter, streams);
+  while (g_hash_table_iter_next (&iter, NULL, &value))
+    add_module_solvables (repo, value);
+
+  pool_createwhatprovides (repo->pool);
+}
+
+static void
+_repo_add_modulemd_defaults (Repo             *repo,
+                             ModulemdDefaults *defaults)
 {
   Pool *pool = repo->pool;
+  const char *n = modulemd_defaults_peek_module_name (defaults);
+  const char *s = modulemd_defaults_peek_default_stream (defaults);
+  g_autofree char *mprov = g_strdup_printf ("module(%s:%s)", n, s);
 
-  /* TODO: implement usage of REPO_EXTEND_SOLVABLES, but modulemd doesn't store chksums */
+  Id dep = pool_str2id (pool, mprov, 0);
+  if (!dep)
+    return;
 
-  for (unsigned int i = 0; i < objects->len; i++)
-    {
-      GObject *object = g_ptr_array_index (objects, i);
-      if (!MODULEMD_IS_MODULE (object))
-        continue;
-
-      ModulemdModule *module = (ModulemdModule *)object;
-      add_module_solvables (repo, module);
-    }
-  pool_createwhatprovides (pool);
-
-  for (unsigned int i = 0; i < objects->len; i++)
-    {
-      GObject *object = g_ptr_array_index (objects, i);
-      if (!MODULEMD_IS_DEFAULTS (object))
-        continue;
-
-      ModulemdDefaults *defaults = (ModulemdDefaults *)object;
-      const char *n = modulemd_defaults_peek_module_name (defaults);
-      const char *s = modulemd_defaults_peek_default_stream (defaults);
-      g_autofree char *mprov = g_strdup_printf ("module(%s:%s)", n, s);
-
-      Id dep = pool_str2id (pool, mprov, 0);
-      if (!dep)
-        continue;
-
-      Id *pp = pool_whatprovides_ptr (pool, dep);
-      for (; *pp; pp++)
-        {
-          Solvable *s = pool_id2solvable (pool, *pp);
-          solvable_add_deparray (s, SOLVABLE_PROVIDES,
-                                 pool_str2id (pool, "module-default()", 1),
-                                 0);
-        }
-    }
+  Id *pp = pool_whatprovides_ptr (pool, dep);
+  for (; *pp; pp++)
+  {
+    Solvable *s = pool_id2solvable (pool, *pp);
+    solvable_add_deparray (s, SOLVABLE_PROVIDES,
+                           pool_str2id (pool, "module-default()", 1),
+                           0);
+  }
 }
 
 static int
@@ -315,9 +308,26 @@ repo_add_modulemd (Repo       *repo,
                    const char *language,
                    int         flags)
 {
-  g_autoptr(GPtrArray) objects = modulemd_objects_from_stream (fp, NULL);
+  gpointer value;
+  GHashTableIter iter;
+  g_autoptr(GError) error = NULL;
+  g_autoptr(GHashTable) objects = modulemd_index_from_stream (fp, NULL, &error);
 
-  _repo_add_modulemd_from_objects (repo, objects, language, flags);
+  if (error != NULL)
+    return -1;
+
+  g_hash_table_iter_init (&iter, objects);
+  while (g_hash_table_iter_next (&iter, NULL, &value))
+    {
+      ModulemdImprovedModule *imod = (ModulemdImprovedModule *)value;
+
+      g_autoptr(GHashTable) streams = modulemd_improvedmodule_get_streams (imod);
+      _repo_add_modulemd_streams (repo, streams, language, flags);
+
+      ModulemdDefaults *defaults = modulemd_improvedmodule_peek_defaults (imod);
+      if (defaults)
+        _repo_add_modulemd_defaults (repo, defaults);
+    }
 
   return 0;
 }
@@ -730,22 +740,18 @@ add_platform_module (const char *platform,
                      const char *arch,
                      Repo       *system)
 {
-  g_autoptr(GPtrArray) mmd_objects = g_ptr_array_new ();
-
-  g_autoptr(ModulemdModule) module = modulemd_module_new ();
-  modulemd_module_set_name (module, "platform");
-  modulemd_module_set_stream (module, platform);
-  modulemd_module_set_version (module, 0);
-  modulemd_module_set_context (module, "00000000");
-  modulemd_module_set_arch (module, arch);
-  g_ptr_array_add (mmd_objects, module);
+  g_autoptr(ModulemdModuleStream) module = modulemd_modulestream_new ();
+  modulemd_modulestream_set_name (module, "platform");
+  modulemd_modulestream_set_stream (module, platform);
+  modulemd_modulestream_set_version (module, 0);
+  modulemd_modulestream_set_context (module, "00000000");
+  modulemd_modulestream_set_arch (module, arch);
+  add_module_solvables (system, module);
 
   g_autoptr(ModulemdDefaults) defaults = modulemd_defaults_new ();
   modulemd_defaults_set_module_name (defaults, "platform");
   modulemd_defaults_set_default_stream (defaults, platform);
-  g_ptr_array_add (mmd_objects, defaults);
-
-  _repo_add_modulemd_from_objects (system, mmd_objects, NULL, 0);
+  _repo_add_modulemd_defaults (system, defaults);
 }
 
 static Map
