@@ -13,6 +13,7 @@
 #include <solv/repo_repomdxml.h>
 #include <solv/repo_rpmmd.h>
 #include <solv/solv_xfopen.h>
+#include <libsoup/soup.h>
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(Pool, pool_free);
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(Solver, solver_free);
@@ -428,18 +429,74 @@ filelist_loadcb (Pool     *pool,
   return 1;
 }
 
+static gboolean
+download_to_path (const char   *url,
+                  const char   *path,
+                  SoupSession  *session,
+                  gboolean      force_download,
+                  GError      **error)
+{
+  g_autoptr(SoupURI) parsed = soup_uri_new (url);
+  if (!SOUP_URI_VALID_FOR_HTTP (parsed))
+    {
+      g_debug ("%s is already a local file", url);
+      return TRUE;
+    }
+
+  if (g_file_test (path, G_FILE_TEST_IS_REGULAR) && !force_download)
+    return TRUE;
+
+  g_debug ("Downloading %s to %s", url, path);
+
+  g_autoptr(SoupMessage) msg = soup_message_new_from_uri ("GET", parsed);
+  g_autoptr(GInputStream) istream = soup_session_send (session, msg, NULL, error);
+  if (!SOUP_STATUS_IS_SUCCESSFUL (msg->status_code))
+    return FALSE;
+
+  g_autoptr(GFile) file = g_file_new_for_path (path);
+  g_autoptr(GFileOutputStream) ostream = g_file_replace (file,
+                                                         NULL,
+                                                         FALSE,
+                                                         G_FILE_CREATE_REPLACE_DESTINATION,
+                                                         NULL,
+                                                         error);
+  if (!ostream)
+    return FALSE;
+
+  if (g_output_stream_splice (G_OUTPUT_STREAM (ostream), istream, 0, NULL, error) == -1)
+    return FALSE;
+
+  return TRUE;
+}
+
 static Repo *
-create_repo (Pool        *pool,
-             const char  *name,
-             const char  *path,
-             GError     **error)
+create_repo (Pool         *pool,
+             const char   *name,
+             const char   *path,
+             SoupSession  *session,
+             GError      **error)
 {
   FILE *fp;
   Id chksumtype;
   const unsigned char *chksum;
   const char *fname;
 
-  fp = solv_xfopen (pool_tmpjoin (pool, path, "/", "repodata/repomd.xml"), "r");
+  g_autofree gchar *destdir = g_build_filename (g_get_user_cache_dir (),
+                                                "fus", "repodata", name,
+                                                NULL);
+  if (g_mkdir_with_parents (destdir, 0700) == -1)
+    {
+      g_debug ("Could not create cache dir %s: %s", destdir, strerror (errno));
+      return NULL;
+    }
+
+  char *url = pool_tmpjoin (pool, path, "/", "repodata/repomd.xml");
+  char *filepath = pool_tmpjoin (pool, destdir, "/", "repomd.xml");
+  /* Always download repomd file */
+  if (!download_to_path (url, filepath, session, TRUE, error))
+    return NULL;
+
+  fp = solv_xfopen (filepath, "r");
   if (!fp)
     {
       g_set_error (error,
@@ -456,12 +513,20 @@ create_repo (Pool        *pool,
   fname = repomd_find (repo, "primary", &chksum, &chksumtype);
   if (fname)
     {
-      fp = solv_xfopen (pool_tmpjoin (pool, path, "/", fname), 0);
-      if (fp != NULL)
+      g_autofree gchar *basename = g_path_get_basename (fname);
+      filepath = pool_tmpjoin (pool, destdir, "/", basename);
+      url = pool_tmpjoin (pool, path, "/", fname);
+      if (download_to_path (url, filepath, session, FALSE, error))
         {
-          repo_add_rpmmd (repo, fp, NULL, 0);
-          fclose (fp);
+          fp = solv_xfopen (filepath, "r");
+          if (fp != NULL)
+            {
+              repo_add_rpmmd (repo, fp, NULL, 0);
+              fclose (fp);
+            }
         }
+      else
+        g_debug ("Could not download \"primary\" metadata to %s", filepath);
     }
 
   fname = repomd_find (repo, "group_gz", &chksum, &chksumtype);
@@ -469,28 +534,44 @@ create_repo (Pool        *pool,
     fname = repomd_find (repo, "group", &chksum, &chksumtype);
   if (fname)
     {
-      fp = solv_xfopen (pool_tmpjoin (pool, path, "/", fname), 0);
-      if (fp != NULL)
+      url = pool_tmpjoin (pool, path, "/", fname);
+      g_autofree gchar *basename = g_path_get_basename (fname);
+      filepath = pool_tmpjoin (pool, destdir, "/", basename);
+      if (download_to_path (url, filepath, session, FALSE, error))
         {
-          repo_add_comps (repo, fp, 0);
-          fclose (fp);
+          fp = solv_xfopen (filepath, "r");
+          if (fp != NULL)
+            {
+              repo_add_comps (repo, fp, 0);
+              fclose (fp);
+            }
         }
+      else
+        g_debug ("Could not download \"group\" metadata to %s", filepath);
     }
 
   fname = repomd_find (repo, "filelists", &chksum, &chksumtype);
   if (fname)
     {
-      Repodata *data = repo_add_repodata (repo, 0);
-      repodata_extend_block (data, repo->start, repo->end - repo->start);
-      Id handle = repodata_new_handle (data);
-      repodata_set_poolstr (data, handle, REPOSITORY_REPOMD_TYPE, "filelists");
-      repodata_set_str (data, handle, REPOSITORY_REPOMD_LOCATION, pool_tmpjoin (pool, path, "/", fname));
-      repodata_set_bin_checksum (data, handle, REPOSITORY_REPOMD_CHECKSUM, chksumtype, chksum);
-      repodata_add_idarray (data, handle, REPOSITORY_KEYS, SOLVABLE_FILELIST);
-      repodata_add_idarray (data, handle, REPOSITORY_KEYS, REPOKEY_TYPE_DIRSTRARRAY);
-      repodata_add_flexarray (data, SOLVID_META, REPOSITORY_EXTERNAL, handle);
-      repodata_internalize (data);
-      repodata_create_stubs (repo_last_repodata (repo));
+      url = pool_tmpjoin (pool, path, "/", fname);
+      g_autofree gchar *basename = g_path_get_basename (fname);
+      filepath = pool_tmpjoin (pool, destdir, "/", basename);
+      if (download_to_path (url, filepath, session, FALSE, error))
+        {
+          Repodata *data = repo_add_repodata (repo, 0);
+          repodata_extend_block (data, repo->start, repo->end - repo->start);
+          Id handle = repodata_new_handle (data);
+          repodata_set_poolstr (data, handle, REPOSITORY_REPOMD_TYPE, "filelists");
+          repodata_set_str (data, handle, REPOSITORY_REPOMD_LOCATION, filepath);
+          repodata_set_bin_checksum (data, handle, REPOSITORY_REPOMD_CHECKSUM, chksumtype, chksum);
+          repodata_add_idarray (data, handle, REPOSITORY_KEYS, SOLVABLE_FILELIST);
+          repodata_add_idarray (data, handle, REPOSITORY_KEYS, REPOKEY_TYPE_DIRSTRARRAY);
+          repodata_add_flexarray (data, SOLVID_META, REPOSITORY_EXTERNAL, handle);
+          repodata_internalize (data);
+          repodata_create_stubs (repo_last_repodata (repo));
+        }
+      else
+        g_debug ("Could not download \"filelists\" metadata to %s", filepath);
     }
 
   pool_createwhatprovides (pool);
@@ -498,12 +579,20 @@ create_repo (Pool        *pool,
   fname = repomd_find (repo, "modules", &chksum, &chksumtype);
   if (fname)
     {
-      fp = solv_xfopen (pool_tmpjoin (pool, path, "/", fname), 0);
-      if (fp != NULL)
+      url = pool_tmpjoin (pool, path, "/", fname);
+      g_autofree gchar *basename = g_path_get_basename (fname);
+      filepath = pool_tmpjoin (pool, destdir, "/", basename);
+      if (download_to_path (url, filepath, session, FALSE, error))
         {
-          repo_add_modulemd (repo, fp, NULL, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
-          fclose (fp);
+          fp = solv_xfopen (filepath, "r");
+          if (fp != NULL)
+            {
+              repo_add_modulemd (repo, fp, NULL, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
+              fclose (fp);
+            }
         }
+      else
+        g_debug ("Could not download \"modules\" metadata to %s", filepath);
     }
 
   pool_createwhatprovides (pool);
@@ -1221,6 +1310,9 @@ fus_depsolve (const char *arch,
 
   pool_setarch (pool, arch);
 
+  /* Needed for downloading metadata from remote repos */
+  g_autoptr(SoupSession) session = soup_session_new ();
+
   Repo *system = repo_create (pool, "@system");
   pool_set_installed (pool, system);
   if (platform)
@@ -1237,7 +1329,7 @@ fus_depsolve (const char *arch,
 #ifdef FUS_TESTING
       r = create_test_repo (pool, strv[0], strv[1], strv[2], error);
 #else
-      r = create_repo (pool, strv[0], strv[2], error);
+      r = create_repo (pool, strv[0], strv[2], session, error);
 #endif
       if (!r)
         return NULL;
