@@ -4,7 +4,7 @@ dep_glib = dependency('glib-2.0')
 dep_gio = dependency('gio-2.0')
 dep_libsolv = dependency('libsolv', version : '>= 0.6.34')
 dep_libsolvext = dependency('libsolvext', version : '>= 0.6.34')
-dep_modulemd = dependency('modulemd', version : '>= 1.6')
+dep_modulemd = dependency('modulemd-2.0', version : '>= 2.0')
 dep_libsoup = dependency('libsoup-2.4', version: '>= 2.4')
 
 add_project_arguments('-DG_LOG_DOMAIN="fus"', language : 'c')
