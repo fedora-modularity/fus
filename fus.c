@@ -3,6 +3,7 @@
 #include <glib.h>
 #include <gio/gio.h>
 #include <modulemd.h>
+#include <solv/chksum.h>
 #include <solv/policy.h>
 #include <solv/pool.h>
 #include <solv/poolarch.h>
@@ -430,6 +431,31 @@ filelist_loadcb (Pool     *pool,
 }
 
 static gboolean
+checksum_matches (Id                   chksum_type,
+                  const char          *filepath,
+                  const unsigned char *chksum)
+{
+  int ret = 0;
+  gsize len = 0;
+  Chksum *file_sum, *md_sum = NULL;
+  g_autoptr(GFile) file = g_file_new_for_path (filepath);
+  g_autoptr(GBytes) bytes = g_file_load_bytes (file, NULL, NULL, NULL);
+  gconstpointer bp = g_bytes_get_data (bytes, &len);
+
+  file_sum = solv_chksum_create (chksum_type);
+  solv_chksum_add (file_sum, bp, len);
+
+  md_sum = solv_chksum_create_from_bin (chksum_type, chksum);
+
+  ret = solv_chksum_cmp (file_sum, md_sum);
+
+  solv_chksum_free (file_sum, NULL);
+  solv_chksum_free (md_sum, NULL);
+
+  return ret == 1;
+}
+
+static gboolean
 download_to_path (SoupSession  *session,
                   const char   *url,
                   const char   *path,
@@ -466,20 +492,25 @@ download_to_path (SoupSession  *session,
 }
 
 static gchar *
-download_metadata (SoupSession  *session,
-                   const char   *repo_url,
-                   const char   *md_name,
-                   const char   *destdir,
-                   GError      **error)
+download_metadata (SoupSession          *session,
+                   const char           *repo_url,
+                   const char           *md_name,
+                   const char           *destdir,
+                   const unsigned char  *chksum,
+                   Id                    chksum_type,
+                   GError              **error)
 {
   g_autofree gchar *name = g_path_get_basename (md_name);
   g_autofree gchar *filepath = g_build_filename (destdir, name, NULL);
 
   /* Always download repomd.xml */
-  if (!g_strcmp0 (name, "repomd.xml") ||
-      !g_file_test (filepath, G_FILE_TEST_IS_REGULAR))
-    if (!download_to_path (session, repo_url, filepath, error))
-      return NULL;
+  if (!g_strcmp0 (name, "repomd.xml")                 ||
+      !g_file_test (filepath, G_FILE_TEST_IS_REGULAR) ||
+      !checksum_matches (chksum_type, filepath, chksum))
+    {
+      if (!download_to_path (session, repo_url, filepath, error))
+        return NULL;
+    }
 
   return g_steal_pointer (&filepath);
 }
@@ -512,6 +543,7 @@ create_repo (Pool         *pool,
   g_autofree gchar *repomd_path = download_metadata (session,
                                                      url, "repomd.xml",
                                                      destdir,
+                                                     NULL, 0,
                                                      error);
   if (!repomd_path)
     return NULL;
@@ -537,6 +569,7 @@ create_repo (Pool         *pool,
       g_autofree gchar *primary_path = download_metadata (session,
                                                           url, fname,
                                                           destdir,
+                                                          chksum, chksumtype,
                                                           error);
       fp = solv_xfopen (primary_path, "r");
       if (fp != NULL)
@@ -557,6 +590,7 @@ create_repo (Pool         *pool,
       g_autofree gchar *group_path = download_metadata (session,
                                                         url, fname,
                                                         destdir,
+                                                        chksum, chksumtype,
                                                         error);
       fp = solv_xfopen (group_path, "r");
       if (fp != NULL)
@@ -575,6 +609,7 @@ create_repo (Pool         *pool,
       g_autofree gchar *filepath = download_metadata (session,
                                                       url, fname,
                                                       destdir,
+                                                      chksum, chksumtype,
                                                       error);
       if (filepath)
         {
@@ -603,6 +638,7 @@ create_repo (Pool         *pool,
       g_autofree gchar *modules_path = download_metadata (session,
                                                           url, fname,
                                                           destdir,
+                                                          chksum, chksumtype,
                                                           error);
       fp = solv_xfopen (modules_path, "r");
       if (fp != NULL)
