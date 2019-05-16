@@ -7,6 +7,11 @@ data:
   version: 20180904161631
   context: cafebabe
   arch: x86_64
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   dependencies:
     - buildrequires:
         platform: [f29]
@@ -27,6 +32,11 @@ data:
   version: 20180904161631
   context: deadbeef
   arch: x86_64
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   dependencies:
     - buildrequires:
         platform: [f29]

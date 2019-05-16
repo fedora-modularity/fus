@@ -7,6 +7,11 @@ data:
   version: 2018
   context: deadbeef
   arch: noarch
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   artifacts:
     rpms:
       - C-0:1-1.noarch
@@ -21,6 +26,11 @@ data:
   version: 2018
   context: deadbeef
   arch: noarch
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   artifacts:
     rpms:
       - C-0:2-1.noarch
@@ -34,6 +44,11 @@ data:
   version: 2018
   context: deadbeef
   arch: noarch
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   artifacts:
     rpms:
       - C-0:3-1.noarch
@@ -47,6 +62,11 @@ data:
   version: 2018
   context: deadbeef
   arch: noarch
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   artifacts:
     rpms:
       - C-0:4-1.noarch
@@ -60,6 +80,11 @@ data:
   version: 2018
   context: deadbeef
   arch: noarch
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   artifacts:
     rpms:
       - D-0:1-1.noarch
@@ -76,6 +101,11 @@ data:
   version: 2018
   context: deadbeef
   arch: noarch
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   artifacts:
     rpms:
       - D-0:2-1.noarch
