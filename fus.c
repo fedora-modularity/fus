@@ -401,39 +401,10 @@ repomd_find (Repo                 *repo,
   return filename;
 }
 
-static int
-filelist_loadcb (Pool     *pool,
-                 Repodata *data,
-                 void     *cdata)
-{
-  FILE *fp;
-  const char *fpath, *type;
-  Repo *repo = data->repo;
-
-  type = repodata_lookup_str (data, SOLVID_META, REPOSITORY_REPOMD_TYPE);
-  if (g_strcmp0 (type, "filelists") != 0)
-    return 0;
-
-  fpath = repodata_lookup_str (data, SOLVID_META, REPOSITORY_REPOMD_LOCATION);
-  if (!fpath)
-    return 0;
-
-  fp = solv_xfopen (fpath, 0);
-  if (!fp)
-    {
-      g_warning ("Could not open filelists %s: %s", fpath, g_strerror (errno));
-      return 0;
-    }
-  repo_add_rpmmd (repo, fp, NULL, REPO_USE_LOADING | REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
-  fclose (fp);
-
-  return 1;
-}
-
 static gboolean
-checksum_matches (Id                   chksum_type,
-                  const char          *filepath,
-                  const unsigned char *chksum)
+checksum_matches (const char          *filepath,
+                  const unsigned char *chksum,
+                  Id                   chksum_type)
 {
   int ret = 0;
   gsize len = 0;
@@ -491,28 +462,69 @@ download_to_path (SoupSession  *session,
   return TRUE;
 }
 
-static gchar *
-download_metadata (SoupSession          *session,
-                   const char           *repo_url,
-                   const char           *md_name,
-                   const char           *destdir,
-                   const unsigned char  *chksum,
-                   Id                    chksum_type,
-                   GError              **error)
+static const char *
+download_repo_metadata (SoupSession *session,
+                        Repo        *repo,
+                        const char  *type,
+                        const char  *repo_url,
+                        const char  *cachedir)
 {
-  g_autofree gchar *name = g_path_get_basename (md_name);
-  g_autofree gchar *filepath = g_build_filename (destdir, name, NULL);
+  Id chksumtype;
+  const char *fpath, *fname;
+  const unsigned char *chksum;
 
-  /* Always download repomd.xml */
-  if (!g_strcmp0 (name, "repomd.xml")                 ||
-      !g_file_test (filepath, G_FILE_TEST_IS_REGULAR) ||
-      !checksum_matches (chksum_type, filepath, chksum))
+  fname = repomd_find (repo, type, &chksum, &chksumtype);
+  if (!fname)
+    return NULL;
+
+  fpath = pool_tmpjoin (repo->pool, cachedir, "/", fname);
+  if (!g_file_test (fpath, G_FILE_TEST_IS_REGULAR) ||
+      !checksum_matches (fpath, chksum, chksumtype))
     {
-      if (!download_to_path (session, repo_url, filepath, error))
-        return NULL;
+      g_autoptr(GError) error = NULL;
+      const char *furl = pool_tmpjoin (repo->pool, repo_url, "/", fname);
+      if (!download_to_path (session, furl, fpath, &error))
+        {
+          g_warning ("Could not download %s: %s", furl, error->message);
+          return NULL;
+        }
     }
 
-  return g_steal_pointer (&filepath);
+  return fpath;
+}
+
+static int
+filelist_loadcb (Pool     *pool,
+                 Repodata *data,
+                 void     *cdata)
+{
+  FILE *fp;
+  const char *path, *type, *fname;
+  Repo *repo = data->repo;
+  SoupSession *session = (SoupSession *) cdata;
+
+  type = repodata_lookup_str (data, SOLVID_META, REPOSITORY_REPOMD_TYPE);
+  if (g_strcmp0 (type, "filelists") != 0)
+    return 0;
+
+  path = repodata_lookup_str (data, SOLVID_META, REPOSITORY_REPOMD_LOCATION);
+  if (!path)
+    return 0;
+
+  g_autofree gchar *cachedir = g_build_filename (g_get_user_cache_dir (),
+                                                 "fus", repo->name, NULL);
+
+  fname = download_repo_metadata (session, repo, type, path, cachedir);
+  fp = solv_xfopen (fname, 0);
+  if (!fp)
+    {
+      g_warning ("Could not open filelists %s: %s", fname, g_strerror (errno));
+      return 0;
+    }
+  repo_add_rpmmd (repo, fp, NULL, REPO_USE_LOADING | REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
+  fclose (fp);
+
+  return 1;
 }
 
 static Repo *
@@ -525,11 +537,12 @@ create_repo (Pool         *pool,
   FILE *fp;
   Id chksumtype;
   const unsigned char *chksum;
-  const char *fname;
+  const char *fname, *url, *destdir;
 
-  g_autofree gchar *destdir = g_build_filename (g_get_user_cache_dir (),
-                                                "fus", name, "repodata",
-                                                NULL);
+  g_autofree gchar *cachedir = g_build_filename (g_get_user_cache_dir (),
+                                                 "fus", name, NULL);
+
+  destdir = pool_tmpjoin (pool, cachedir, "/", "repodata");
   if (g_mkdir_with_parents (destdir, 0700) == -1)
     {
       g_set_error (error,
@@ -539,16 +552,15 @@ create_repo (Pool         *pool,
       return NULL;
     }
 
-  char *url = pool_tmpjoin (pool, path, "/", "repodata/repomd.xml");
-  g_autofree gchar *repomd_path = download_metadata (session,
-                                                     url, "repomd.xml",
-                                                     destdir,
-                                                     NULL, 0,
-                                                     error);
-  if (!repomd_path)
+  /* We can't use `download_repo_metadata` for repomd.xml because it's a
+   * special case: it's always downloaded if the path provided is a repo URL.
+   */
+  url = pool_tmpjoin (pool, path, "/", "repodata/repomd.xml");
+  fname = pool_tmpjoin (pool, destdir, "/", "repomd.xml");
+  if (!download_to_path (session, url, fname, error))
     return NULL;
 
-  fp = solv_xfopen (repomd_path, "r");
+  fp = solv_xfopen (fname, "r");
   if (!fp)
     {
       g_set_error (error,
@@ -562,92 +574,49 @@ create_repo (Pool         *pool,
   repo_add_repomdxml (repo, fp, 0);
   fclose (fp);
 
-  fname = repomd_find (repo, "primary", &chksum, &chksumtype);
-  if (fname)
+  fname = download_repo_metadata (session, repo, "primary", path, cachedir);
+  fp = solv_xfopen (fname, "r");
+  if (fp != NULL)
     {
-      url = pool_tmpjoin (pool, path, "/", fname);
-      g_autofree gchar *primary_path = download_metadata (session,
-                                                          url, fname,
-                                                          destdir,
-                                                          chksum, chksumtype,
-                                                          error);
-      fp = solv_xfopen (primary_path, "r");
-      if (fp != NULL)
-        {
-          repo_add_rpmmd (repo, fp, NULL, 0);
-          fclose (fp);
-        }
-      else
-        g_debug ("Could not download/open \"primary\" metadata %s", primary_path);
+      repo_add_rpmmd (repo, fp, NULL, 0);
+      fclose (fp);
     }
 
-  fname = repomd_find (repo, "group_gz", &chksum, &chksumtype);
+  fname = download_repo_metadata (session, repo, "group_gz", path, cachedir);
   if (!fname)
-    fname = repomd_find (repo, "group", &chksum, &chksumtype);
-  if (fname)
+    fname = download_repo_metadata (session, repo, "group", path, cachedir);
+  fp = solv_xfopen (fname, "r");
+  if (fp != NULL)
     {
-      url = pool_tmpjoin (pool, path, "/", fname);
-      g_autofree gchar *group_path = download_metadata (session,
-                                                        url, fname,
-                                                        destdir,
-                                                        chksum, chksumtype,
-                                                        error);
-      fp = solv_xfopen (group_path, "r");
-      if (fp != NULL)
-        {
-          repo_add_comps (repo, fp, 0);
-          fclose (fp);
-        }
-      else
-        g_debug ("Could not download/open \"group\" metadata %s", group_path);
+      repo_add_comps (repo, fp, 0);
+      fclose (fp);
     }
 
+  /* filelists metadata will only be downloaded if/when needed */
   fname = repomd_find (repo, "filelists", &chksum, &chksumtype);
   if (fname)
     {
-      url = pool_tmpjoin (pool, path, "/", fname);
-      g_autofree gchar *filepath = download_metadata (session,
-                                                      url, fname,
-                                                      destdir,
-                                                      chksum, chksumtype,
-                                                      error);
-      if (filepath)
-        {
-          Repodata *data = repo_add_repodata (repo, 0);
-          repodata_extend_block (data, repo->start, repo->end - repo->start);
-          Id handle = repodata_new_handle (data);
-          repodata_set_poolstr (data, handle, REPOSITORY_REPOMD_TYPE, "filelists");
-          repodata_set_str (data, handle, REPOSITORY_REPOMD_LOCATION, filepath);
-          repodata_set_bin_checksum (data, handle, REPOSITORY_REPOMD_CHECKSUM, chksumtype, chksum);
-          repodata_add_idarray (data, handle, REPOSITORY_KEYS, SOLVABLE_FILELIST);
-          repodata_add_idarray (data, handle, REPOSITORY_KEYS, REPOKEY_TYPE_DIRSTRARRAY);
-          repodata_add_flexarray (data, SOLVID_META, REPOSITORY_EXTERNAL, handle);
-          repodata_internalize (data);
-          repodata_create_stubs (repo_last_repodata (repo));
-        }
-      else
-        g_debug ("Could not download/open \"filelists\" metadata %s", filepath);
+      Repodata *data = repo_add_repodata (repo, 0);
+      repodata_extend_block (data, repo->start, repo->end - repo->start);
+      Id handle = repodata_new_handle (data);
+      repodata_set_poolstr (data, handle, REPOSITORY_REPOMD_TYPE, "filelists");
+      repodata_set_str (data, handle, REPOSITORY_REPOMD_LOCATION, path);
+      repodata_set_bin_checksum (data, handle, REPOSITORY_REPOMD_CHECKSUM, chksumtype, chksum);
+      repodata_add_idarray (data, handle, REPOSITORY_KEYS, SOLVABLE_FILELIST);
+      repodata_add_idarray (data, handle, REPOSITORY_KEYS, REPOKEY_TYPE_DIRSTRARRAY);
+      repodata_add_flexarray (data, SOLVID_META, REPOSITORY_EXTERNAL, handle);
+      repodata_internalize (data);
+      repodata_create_stubs (repo_last_repodata (repo));
     }
 
   pool_createwhatprovides (pool);
 
-  fname = repomd_find (repo, "modules", &chksum, &chksumtype);
-  if (fname)
+  fname = download_repo_metadata (session, repo, "modules", path, cachedir);
+  fp = solv_xfopen (fname, "r");
+  if (fp != NULL)
     {
-      url = pool_tmpjoin (pool, path, "/", fname);
-      g_autofree gchar *modules_path = download_metadata (session,
-                                                          url, fname,
-                                                          destdir,
-                                                          chksum, chksumtype,
-                                                          error);
-      fp = solv_xfopen (modules_path, "r");
-      if (fp != NULL)
-        {
-          repo_add_modulemd (repo, fp, NULL, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
-          fclose (fp);
-        }
-      else
-        g_debug ("Could not download/open \"modules\" metadata %s", modules_path);
+      repo_add_modulemd (repo, fp, NULL, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
+      fclose (fp);
     }
 
   pool_createwhatprovides (pool);
@@ -1360,13 +1329,12 @@ fus_depsolve (const char *arch,
 {
   g_autoptr(Pool) pool = pool_create ();
 #ifndef FUS_TESTING
-  pool_setloadcallback (pool, filelist_loadcb, 0);
+  /* Needed for downloading metadata from remote repos */
+  g_autoptr(SoupSession) session = soup_session_new ();
+  pool_setloadcallback (pool, filelist_loadcb, session);
 #endif
 
   pool_setarch (pool, arch);
-
-  /* Needed for downloading metadata from remote repos */
-  g_autoptr(SoupSession) session = soup_session_new ();
 
   Repo *system = repo_create (pool, "@system");
   pool_set_installed (pool, system);
