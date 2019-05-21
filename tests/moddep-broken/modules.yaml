@@ -7,6 +7,11 @@ data:
   version: 2018
   context: deadbeef
   arch: x86_64
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   dependencies:
     - buildrequires:
         platform: [f30]
@@ -25,6 +30,11 @@ data:
   version: 2018
   context: deadbeef
   arch: x86_64
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   dependencies:
     - buildrequires:
         platform: [f29]
@@ -44,6 +54,11 @@ data:
   version: 2018
   context: deadbeef
   arch: x86_64
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   dependencies:
     - buildrequires:
         platform: [f29]

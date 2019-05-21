@@ -7,6 +7,11 @@ data:
   version: 2018
   context: deadbeef
   arch: noarch
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   dependencies:
     - buildrequires:
         platform: [f29]
@@ -20,6 +25,11 @@ data:
   version: 2018
   context: deadbeef
   arch: noarch
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   dependencies:
     - buildrequires:
         platform: [f29]
@@ -33,6 +43,11 @@ data:
   version: 2018
   context: deadbeef
   arch: noarch
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   dependencies:
     - buildrequires:
         platform: [f29]
@@ -46,6 +61,11 @@ data:
   version: 2018
   context: deadbeef
   arch: noarch
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   dependencies:
     - buildrequires:
         platform: [f29]
@@ -59,6 +79,11 @@ data:
   version: 2018
   context: deadbeef
   arch: noarch
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   dependencies:
     - requires:
         C: []
@@ -72,6 +97,11 @@ data:
   version: 2018
   context: deadbeef
   arch: noarch
+  summary: Just a test module
+  description: Module for testing fus
+  license:
+      module:
+          - Beerware
   dependencies:
     - requires:
         C: [glossy]
