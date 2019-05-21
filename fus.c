@@ -658,7 +658,7 @@ create_repo (Pool         *pool,
   fp = solv_xfopen (fname, "r");
   if (fp != NULL)
     {
-      g_autoptr(GError) e;
+      g_autoptr(GError) e = NULL;
       if (!repo_add_modulemd (repo, fp, NULL, REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES, &e))
         g_warning ("Could not add modules from repo %s: %s", name, e->message);
       fclose (fp);
