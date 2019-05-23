@@ -1,9 +1,9 @@
+#include "fus.h"
+
 #include <locale.h>
 #include <stdlib.h>
 #include <sys/utsname.h>
 #include <glib.h>
-
-extern GPtrArray *fus_depsolve(const char *, const char *, const GStrv, const GStrv, const GStrv, GError **);
 
 static inline void
 print_package (void *package, gpointer user_data)
