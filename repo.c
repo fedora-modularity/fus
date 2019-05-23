@@ -522,6 +522,12 @@ download_repo_metadata (SoupSession *session,
   return fpath;
 }
 
+static inline gchar *
+get_repo_cachedir (const char *name)
+{
+  return g_build_filename (g_get_user_cache_dir (), "fus", name, NULL);
+}
+
 int
 filelist_loadcb (Pool     *pool,
                  Repodata *data,
@@ -540,8 +546,7 @@ filelist_loadcb (Pool     *pool,
   if (!path)
     return 0;
 
-  g_autofree gchar *cachedir = g_build_filename (g_get_user_cache_dir (),
-                                                 "fus", repo->name, NULL);
+  g_autofree gchar *cachedir = get_repo_cachedir (repo->name);
 
   fname = download_repo_metadata (session, repo, type, path, cachedir);
   fp = solv_xfopen (fname, 0);
@@ -568,8 +573,7 @@ create_repo (Pool         *pool,
   const unsigned char *chksum;
   const char *fname, *url, *destdir;
 
-  g_autofree gchar *cachedir = g_build_filename (g_get_user_cache_dir (),
-                                                 "fus", name, NULL);
+  g_autofree gchar *cachedir = get_repo_cachedir (name);
 
   destdir = pool_tmpjoin (pool, cachedir, "/", "repodata");
   if (g_mkdir_with_parents (destdir, 0700) == -1)
