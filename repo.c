@@ -6,6 +6,7 @@
 #include <solv/repo_comps.h>
 #include <solv/repo_repomdxml.h>
 #include <solv/repo_rpmmd.h>
+#include <solv/repo_solv.h>
 #include <solv/repo_write.h>
 #include <solv/solv_xfopen.h>
 #include <solv/testcase.h>
@@ -429,6 +430,18 @@ repomd_find (Repo                 *repo,
   return filename;
 }
 
+/* Returns checksum as a hexadecimal string which we can use as filename */
+static gchar *
+chksum_string_for_filepath (GChecksumType type, const char *filepath)
+{
+  gsize len = 0;
+  g_autofree gchar *data = NULL;
+  if (!g_file_get_contents (filepath, &data, &len, NULL))
+    return NULL;
+
+  return g_compute_checksum_for_string (type, data, len);
+}
+
 static gboolean
 checksum_matches (const char          *filepath,
                   const unsigned char *chksum,
@@ -520,6 +533,110 @@ download_repo_metadata (SoupSession *session,
   return fpath;
 }
 
+static void
+switch_to_cached_repo (Repo        *repo,
+                       Repodata    *repodata,
+                       const char  *repoext,
+                       const char  *cachepath)
+{
+  int i;
+  FILE *fp;
+
+  if (!repoext && repodata)
+    return;
+
+  for (i = repo->start; i < repo->end; i++)
+    if (repo->pool->solvables[i].repo != repo)
+      break;
+
+  if (i < repo->end)
+    return; /* not a simple block */
+
+  fp = g_fopen (cachepath, "rb");
+  if (!fp)
+    return;
+
+  /* main repo */
+  if (!repoext)
+    {
+      repo_empty (repo, 1);
+      if (repo_add_solv (repo, fp, SOLV_ADD_NO_STUBS))
+        {
+          g_warning ("Could not add solvables from cache file");
+          return;
+        }
+    }
+  else
+    {
+      int flags = REPO_USE_LOADING | REPO_EXTEND_SOLVABLES | REPO_LOCALPOOL;
+      /* make sure repodata contains complete repo */
+      /* (this is how repodata_write saves it) */
+      repodata_extend_block (repodata, repo->start, repo->end - repo->start);
+      repodata->state = REPODATA_LOADING;
+      repo_add_solv (repo, fp, flags);
+      repodata->state = REPODATA_AVAILABLE; /* in case the load failed */
+    }
+
+  fclose (fp);
+}
+
+static gboolean
+write_repo_cache (Repo         *repo,
+                  Repodata     *repodata,
+                  const char   *repoext,
+                  const gchar  *cachename)
+{
+  FILE *fp = g_fopen (cachename, "wb");
+  if (!fp)
+    {
+      g_warning ("Could not open cache file %s: %s", cachename, g_strerror (errno));
+      return FALSE;
+    }
+
+  if (!repodata)
+    repo_write (repo, fp); /* main repo */
+  else
+    repodata_write (repodata, fp);
+
+  if (fclose (fp))
+    {
+      g_warning ("Error when closing %s: %s", cachename, g_strerror (errno));
+      g_unlink (cachename);
+      return FALSE;
+    }
+
+  /* Switch to just saved repo to activate paging and save memory */
+  switch_to_cached_repo (repo, repodata, repoext, cachename);
+
+  return TRUE;
+}
+
+static gboolean
+load_cached_repo (Repo       *repo,
+                  const char *cachefn,
+                  const char *repoext)
+{
+  int ret, flags = 0;
+
+  if (!g_file_test (cachefn, G_FILE_TEST_IS_REGULAR))
+    {
+      g_debug ("Cache %s for repo %s not found", cachefn, repo->name);
+      return FALSE;
+    }
+
+  FILE *fp = g_fopen (cachefn, "rb");
+  if (!fp)
+    return FALSE;
+
+  if (repoext)
+    flags = REPO_USE_LOADING | REPO_EXTEND_SOLVABLES | REPO_LOCALPOOL;
+
+  ret = repo_add_solv (repo, fp, flags);
+  fclose (fp);
+
+  return ret == 0;
+}
+
 static inline gchar *
 get_repo_cachedir (const char *name)
 {
@@ -540,11 +657,20 @@ filelist_loadcb (Pool     *pool,
   if (g_strcmp0 (type, "filelists") != 0)
     return 0;
 
+  g_autofree gchar *cachedir = get_repo_cachedir (repo->name);
+
+  /* repo ext cache name is $(CHECKSUM(REPOMD)).solvx */
+  const char *cachefn = pool_tmpjoin (pool, cachedir, "/", repo->appdata);
+  cachefn = pool_tmpappend (pool, cachefn, ".solvx", 0);
+  if (load_cached_repo (repo, cachefn, type))
+    {
+      g_debug ("Using cached repo for \"%s\" filelists", repo->name);
+      return 1;
+    }
+
   path = repodata_lookup_str (data, SOLVID_META, REPOSITORY_REPOMD_LOCATION);
   if (!path)
     return 0;
-
-  g_autofree gchar *cachedir = get_repo_cachedir (repo->name);
 
   fname = download_repo_metadata (session, repo, type, path, cachedir);
   fp = solv_xfopen (fname, 0);
@@ -555,6 +681,9 @@ filelist_loadcb (Pool     *pool,
     }
   repo_add_rpmmd (repo, fp, NULL, REPO_USE_LOADING | REPO_LOCALPOOL | REPO_EXTEND_SOLVABLES);
   fclose (fp);
+
+  if (write_repo_cache (repo, data, type, cachefn))
+    g_debug ("Wrote cache file %s for repo \"%s\"", cachefn, repo->name);
 
   return 1;
 }
@@ -591,6 +720,10 @@ create_repo (Pool         *pool,
   if (!download_to_path (session, url, fname, error))
     return NULL;
 
+  gchar *mdchksum = chksum_string_for_filepath (G_CHECKSUM_SHA256, fname);
+  if (!mdchksum)
+    return NULL;
+
   fp = solv_xfopen (fname, "r");
   if (!fp)
     {
@@ -602,6 +735,18 @@ create_repo (Pool         *pool,
     }
 
   Repo *repo = repo_create (pool, name);
+  /* Save repomd checksum to the repo's appdata so we just calculate it once */
+  repo->appdata = mdchksum;
+
+  /* repo main cache name is $(CHECKSUM(REPOMD)).solv */
+  const char *cachefn = pool_tmpjoin (pool, cachedir, "/", mdchksum);
+  cachefn = pool_tmpappend (pool, cachefn, ".solv", 0);
+  if (load_cached_repo (repo, cachefn, NULL))
+    {
+      g_debug ("Using cached repo for \"%s\"", name);
+      return repo;
+    }
+
   repo_add_repomdxml (repo, fp, 0);
   fclose (fp);
 
@@ -637,7 +782,6 @@ create_repo (Pool         *pool,
       repodata_add_idarray (data, handle, REPOSITORY_KEYS, REPOKEY_TYPE_DIRSTRARRAY);
       repodata_add_flexarray (data, SOLVID_META, REPOSITORY_EXTERNAL, handle);
       repodata_internalize (data);
-      repodata_create_stubs (repo_last_repodata (repo));
     }
 
   pool_createwhatprovides (pool);
@@ -653,6 +797,11 @@ create_repo (Pool         *pool,
     }
 
   pool_createwhatprovides (pool);
+
+  if (write_repo_cache (repo, NULL, NULL, cachefn))
+    g_debug ("Wrote cache file %s for repo \"%s\" filelists", cachefn, repo->name);
+
+  repodata_create_stubs (repo_last_repodata (repo));
 
   return repo;
 }

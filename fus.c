@@ -770,5 +770,12 @@ fus_depsolve (const char *arch,
       g_ptr_array_add (output, name);
     }
 
+  /* We need to free the repomd checksum we saved in repo->appdata */
+  int id;
+  Repo *r;
+  FOR_REPOS(id, r)
+    if (r->appdata)
+      g_free (r->appdata);
+
   return output;
 }
