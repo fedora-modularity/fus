@@ -432,26 +432,24 @@ repomd_find (Repo                 *repo,
 static gboolean
 checksum_matches (const char          *filepath,
                   const unsigned char *chksum,
-                  Id                   chksum_type)
+                  Id                   chksumtype)
 {
-  int ret = 0;
   gsize len = 0;
-  Chksum *file_sum, *md_sum = NULL;
-  g_autoptr(GFile) file = g_file_new_for_path (filepath);
-  g_autoptr(GBytes) bytes = g_file_load_bytes (file, NULL, NULL, NULL);
-  gconstpointer bp = g_bytes_get_data (bytes, &len);
+  g_autofree gchar *contents = NULL;
+  if (!g_file_get_contents (filepath, &contents, &len, NULL))
+    return FALSE;
 
-  file_sum = solv_chksum_create (chksum_type);
-  solv_chksum_add (file_sum, bp, len);
+  Chksum *filechksum = solv_chksum_create (chksumtype);
+  if (!filechksum)
+    return FALSE;
+  solv_chksum_add (filechksum, contents, len);
 
-  md_sum = solv_chksum_create_from_bin (chksum_type, chksum);
+  int clen;
+  const unsigned char *binsum = solv_chksum_get (filechksum, &clen);
+  int ret = memcmp (chksum, binsum, clen);
+  solv_chksum_free (filechksum, NULL);
 
-  ret = solv_chksum_cmp (file_sum, md_sum);
-
-  solv_chksum_free (file_sum, NULL);
-  solv_chksum_free (md_sum, NULL);
-
-  return ret == 1;
+  return ret == 0;
 }
 
 static gboolean
