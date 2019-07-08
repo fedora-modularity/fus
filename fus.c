@@ -476,10 +476,13 @@ download_to_path (SoupSession  *session,
                   GError      **error)
 {
   g_autoptr(SoupURI) parsed = soup_uri_new (url);
+  g_autoptr(GFile) file = g_file_new_for_path (path);
+
   if (!SOUP_URI_VALID_FOR_HTTP (parsed))
     {
-      g_debug ("%s is already a local file", url);
-      return TRUE;
+      /* Local file, so just copy to the cache */
+      g_autoptr(GFile) local = g_file_new_for_path (url);
+      return g_file_copy (local, file, G_FILE_COPY_OVERWRITE, NULL, NULL, NULL, error);
     }
 
   g_debug ("Downloading %s to %s", url, path);
@@ -489,7 +492,6 @@ download_to_path (SoupSession  *session,
   if (!SOUP_STATUS_IS_SUCCESSFUL (msg->status_code))
     return FALSE;
 
-  g_autoptr(GFile) file = g_file_new_for_path (path);
   g_autoptr(GFileOutputStream) ostream = g_file_replace (file,
                                                          NULL,
                                                          FALSE,
