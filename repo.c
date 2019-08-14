@@ -510,22 +510,25 @@ download_repo_metadata (SoupSession *session,
                         const char  *cachedir)
 {
   Id chksumtype;
-  const char *fpath, *fname;
   const unsigned char *chksum;
 
-  fname = repomd_find (repo, type, &chksum, &chksumtype);
-  if (!fname)
+  const char *mdname = repomd_find (repo, type, &chksum, &chksumtype);
+  if (!mdname)
     return NULL;
 
-  fpath = pool_tmpjoin (repo->pool, cachedir, "/", fname);
+  /* mdname should be "repodata/$(chksum)-$(type).xml.gz" */
+  const char *ext = strchr (mdname, '.');
+  const char *fpath = pool_tmpjoin (repo->pool, cachedir, "/", type);
+  fpath = pool_tmpappend (repo->pool, fpath, ext, 0);
+
   if (!g_file_test (fpath, G_FILE_TEST_IS_REGULAR) ||
       !checksum_matches (fpath, chksum, chksumtype))
     {
       g_autoptr(GError) error = NULL;
-      const char *furl = pool_tmpjoin (repo->pool, repo_url, "/", fname);
-      if (!download_to_path (session, furl, fpath, &error))
+      const char *mdurl = pool_tmpjoin (repo->pool, repo_url, "/", mdname);
+      if (!download_to_path (session, mdurl, fpath, &error))
         {
-          g_warning ("Could not download %s: %s", furl, error->message);
+          g_warning ("Could not download %s: %s", mdurl, error->message);
           return NULL;
         }
     }
@@ -643,6 +646,25 @@ get_repo_cachedir (const char *name)
   return g_build_filename (g_get_user_cache_dir (), "fus", name, NULL);
 }
 
+static void
+remove_files_by_ext (const char *dirpath,
+                     const char *ext)
+{
+  g_autoptr(GDir) dir = g_dir_open (dirpath, 0, NULL);
+  if (!dir)
+    return;
+
+  const gchar *fname;
+  while ((fname = g_dir_read_name (dir)) != NULL)
+    {
+      if (g_str_has_suffix (fname, ext))
+        {
+          g_autofree gchar *path = g_build_filename (dirpath, fname, NULL);
+          g_unlink (path);
+        }
+    }
+}
+
 int
 filelist_loadcb (Pool     *pool,
                  Repodata *data,
@@ -668,11 +690,15 @@ filelist_loadcb (Pool     *pool,
       return 1;
     }
 
+  /* Cleanup old libsolv cache files (if any) */
+  remove_files_by_ext (cachedir, ".solvx");
+
   path = repodata_lookup_str (data, SOLVID_META, REPOSITORY_REPOMD_LOCATION);
   if (!path)
     return 0;
 
-  fname = download_repo_metadata (session, repo, type, path, cachedir);
+  const char *destdir = pool_tmpjoin (pool, cachedir, "/", "repodata");
+  fname = download_repo_metadata (session, repo, type, path, destdir);
   fp = solv_xfopen (fname, 0);
   if (!fp)
     {
@@ -747,10 +773,13 @@ create_repo (Pool         *pool,
       return repo;
     }
 
+  /* Cleanup old libsolv cache files (if any) */
+  remove_files_by_ext (cachedir, ".solv");
+
   repo_add_repomdxml (repo, fp, 0);
   fclose (fp);
 
-  fname = download_repo_metadata (session, repo, "primary", path, cachedir);
+  fname = download_repo_metadata (session, repo, "primary", path, destdir);
   fp = solv_xfopen (fname, "r");
   if (fp != NULL)
     {
@@ -758,9 +787,9 @@ create_repo (Pool         *pool,
       fclose (fp);
     }
 
-  fname = download_repo_metadata (session, repo, "group_gz", path, cachedir);
+  fname = download_repo_metadata (session, repo, "group_gz", path, destdir);
   if (!fname)
-    fname = download_repo_metadata (session, repo, "group", path, cachedir);
+    fname = download_repo_metadata (session, repo, "group", path, destdir);
   fp = solv_xfopen (fname, "r");
   if (fp != NULL)
     {
@@ -786,7 +815,7 @@ create_repo (Pool         *pool,
 
   pool_createwhatprovides (pool);
 
-  fname = download_repo_metadata (session, repo, "modules", path, cachedir);
+  fname = download_repo_metadata (session, repo, "modules", path, destdir);
   fp = solv_xfopen (fname, "r");
   if (fp != NULL)
     {
