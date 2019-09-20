@@ -828,6 +828,8 @@ Repo *
 create_system_repo (Pool *pool, const char *platform, const char *arch)
 {
   Repo *system = repo_create (pool, "@system");
+  /* Required for adding defaults */
+  pool_createwhatprovides (pool);
   if (platform)
     add_platform_module (platform, arch, system);
   return system;
