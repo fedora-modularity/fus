@@ -194,7 +194,7 @@ apply_excludes (Pool       *pool,
     {
       g_auto(Queue) sel;
       queue_init (&sel);
-      selection_make (pool, &sel, *exclude, SELECTION_NAME | SELECTION_DOTARCH);
+      selection_make (pool, &sel, *exclude, SELECTION_NAME | SELECTION_GLOB | SELECTION_DOTARCH);
       if (!sel.count)
         {
           g_warning ("Nothing matches exclude '%s'", *exclude);
