@@ -1,0 +1,42 @@
+---
+document: modulemd
+version: 2
+data:
+  name: foo-mod
+  stream: stable
+  version: 2020
+  context: deadbeef
+  arch: noarch
+  summary: Just a module
+  description: Module for testing fus
+  license:
+    module:
+      - Beerware
+  artifacts:
+    rpms:
+      - foo-0:1-1.noarch
+...
+---
+document: modulemd
+version: 2
+data:
+  name: foo-mod
+  stream: stable
+  version: 2019
+  context: cafebabe
+  arch: noarch
+  summary: Just a module
+  description: Module for testing fus
+  license:
+    module:
+      - Beerware
+  artifacts:
+    rpms:
+      - foo-0:1-1.noarch
+...
+---
+document: modulemd-defaults
+version: 1
+data:
+  module: foo-mod
+  stream: stable
