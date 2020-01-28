@@ -277,14 +277,27 @@ add_module_solvables (Repo                 *repo,
     }
 }
 
+/**
+ * _repo_add_modulemd_streams:
+ * @repo: A repo into which module streams will be added. All contexts of the
+ * latest version will be added.
+ * @streams: An array of module streams. All module streams in this array
+ * should have the same name and stream, and should only differ in versions and
+ * context. The list should be sorted by version from highest to lowest.
+ */
 static void
 _repo_add_modulemd_streams (Repo       *repo,
-                            GPtrArray  *streams,
-                            const char *language,
-                            int         flags)
+                            GPtrArray  *streams)
 {
+  guint64 latest_version = modulemd_module_stream_get_version(g_ptr_array_index (streams, 0));
+
   for (unsigned int i = 0; i < streams->len; i++)
-    add_module_solvables (repo, g_ptr_array_index (streams, i));
+    {
+      ModulemdModuleStream *stream = g_ptr_array_index (streams, i);
+      if (modulemd_module_stream_get_version (stream) != latest_version)
+        break;
+      add_module_solvables (repo, g_ptr_array_index (streams, i));
+    }
 
   pool_createwhatprovides (repo->pool);
 }
@@ -341,13 +354,24 @@ repo_add_modulemd (Repo        *repo,
       !modulemd_module_index_upgrade_defaults (index, MD_DEFAULTS_VERSION_ONE, error))
     return FALSE;
 
+  /* Iterate over modules in the metadata. */
   g_auto(GStrv) modnames = modulemd_module_index_get_module_names_as_strv (index);
+  /* For each module name ... */
   for (GStrv names = modnames; names && *names; names++)
     {
       ModulemdModule *mod = modulemd_module_index_get_module (index, *names);
+      /* ... find all stream names. */
+      g_auto(GStrv) stream_names = modulemd_module_get_stream_names_as_strv (mod);
 
-      GPtrArray *streams = modulemd_module_get_all_streams (mod);
-      _repo_add_modulemd_streams (repo, streams, language, flags);
+      /* For each stream name separately ... */
+      for (GStrv stream_name = stream_names; stream_name && *stream_name; stream_name++)
+        {
+          /* ... find all module stream objects. This function conveniently
+           * sorts the result by version from highest to lowest. */
+          g_autoptr(GPtrArray) streams = modulemd_module_get_streams_by_stream_name_as_list(
+                  mod, *stream_name);
+          _repo_add_modulemd_streams (repo, streams);
+        }
 
       ModulemdDefaults *defaults = modulemd_module_get_defaults (mod);
       if (defaults)
