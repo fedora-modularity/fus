@@ -282,5 +282,7 @@ int main (int argc, char **argv)
   ADD_SOLV_FAIL_TEST ("/fail/module/broken", "module-broken");
   ADD_SOLV_FAIL_TEST ("/fail/moddep/broken", "moddep-broken");
 
+  ADD_TEST ("/module/multiple", "build-in-more-modules");
+
   return g_test_run ();
 }
