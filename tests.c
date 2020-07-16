@@ -261,6 +261,7 @@ int main (int argc, char **argv)
   ADD_TEST ("/solvable-selection/pull-bare", "pull-bare");
   ADD_TEST ("/solvable-selection/pull-from-default-stream", "pull-default-module");
   ADD_TEST ("/solvable-selection/explicit-nevra", "explicit-nevra");
+  ADD_TEST ("/ursine/ignore-weak-deps", "weak-deps");
 
   g_test_add ("/solvable-selection/order",
               TestData,
