@@ -8,6 +8,7 @@ static Solver *
 solve (Pool *pool, Queue *jobs)
 {
   Solver *solver = solver_create (pool);
+  solver_set_flag (solver, SOLVER_FLAG_IGNORE_RECOMMENDED, 1);
 
   int pbcnt = solver_solve (solver, jobs);
 
