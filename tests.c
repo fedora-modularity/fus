@@ -285,5 +285,7 @@ int main (int argc, char **argv)
 
   ADD_TEST ("/module/multiple", "build-in-more-modules");
 
+  ADD_TEST ("/modulemd-packager-v3/static-context", "static-context");
+
   return g_test_run ();
 }
