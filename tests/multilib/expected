@@ -1,0 +1,8 @@
+module:C:master:2018:deadbeef.x86_64@yaml
+module:D:compat:2018:deadbeef.i686@yaml
+module:E:master:2018:deadbeef.noarch@yaml
+*C-1-1.x86_64@repo
+*D-1-1.i686@repo
+*E-1-1.noarch@repo
+bar-1-1.i686@repo
+foo-1-1.x86_64@repo
