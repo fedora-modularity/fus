@@ -21,3 +21,7 @@ test('tests', exe_test,
     'G_TEST_BUILDDIR=@0@'.format(meson.current_build_dir()),
   ],
 )
+repo_test = find_program('tests/test-load-repo.sh')
+test('repo-tests', repo_test,
+    env: ['G_TEST_BUILDDIR=@0@'.format(meson.current_build_dir())],
+)
